@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* ============================================================
+   MERIDIAN — design tokens
+   Dark-first "precision instrument" aesthetic.
+   Categorical series palette validated for CVD (all-pairs);
+   worst pair sits in the 6–8 floor band, so every chart using
+   them MUST carry direct labels as secondary encoding.
+   Status colors verified for WCAG text contrast on --color-bg.
+   ============================================================ */
+
+@theme {
+  /* surfaces */
+  --color-bg: #0a0c0f;
+  --color-panel: #11141a;
+  --color-panel-2: #161a21;
+  --color-raised: #1b2028;
+
+  /* hairlines */
+  --color-line: #1e232b;
+  --color-line-bright: #2a303a;
+
+  /* ink — `dim` is 3.17:1, decoration only, never meaningful text */
+  --color-ink: #eceef1;
+  --color-muted: #8a929c;
+  --color-dim: #5a626c;
+
+  /* status — verified as text on --color-bg */
+  --color-up: #2ee6a8; /* 12.1:1 */
+  --color-down: #ff6152; /* 6.6:1  */
+  --color-warn: #ffb020; /* 10.7:1 */
+  --color-accent: #8b93ff; /* 7.2:1  */
+
+  /* categorical series — direct labels required */
+  --color-s1: #3987e5;
+  --color-s2: #008300;
+  --color-s3: #d55181;
+  --color-s4: #c98500;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jb), ui-monospace, monospace;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* faint drafting-paper grid */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-bright);
+    border: 3px solid var(--color-bg);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #39404c;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@utility micro {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+@utility tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
+}
+
+/* corner register marks — technical-drawing framing instead of a full border */
+@utility ticked {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    pointer-events: none;
+  }
+  &::before {
+    top: -1px;
+    left: -1px;
+    border-top: 1px solid var(--color-line-bright);
+    border-left: 1px solid var(--color-line-bright);
+  }
+  &::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 1px solid var(--color-line-bright);
+    border-right: 1px solid var(--color-line-bright);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(400%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
