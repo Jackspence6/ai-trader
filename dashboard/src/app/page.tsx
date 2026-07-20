@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useLive } from "@/lib/live";
 import { Money } from "@/lib/currency";
 import { computeFundState } from "@/lib/fund";
+import { computePortfolio } from "@/lib/portfolio/sleeves";
 import { resolveTier } from "@/lib/calc/tiers";
 import { REJECTION_LABELS } from "@/lib/calc/gate";
 import type { EngineConfig } from "@/lib/engine/config";
@@ -40,10 +41,11 @@ export default function CommandCenter() {
   const tier = resolveTier(nav, 0, "T0").current;
 
   const opps = signals.data?.opportunities ?? [];
-  const viable = opps.filter((o) => o.netBps > 0);
+  const viable = opps.filter((o) => o.wouldTake);
   const best = viable[0] ?? null;
 
   const venues = markets.data ? [...new Set(markets.data.quotes.map((q) => q.venue))] : [];
+  const portfolio = computePortfolio(nav, config?.sleeves ?? []);
 
   return (
     <div className="space-y-3 p-3">
@@ -179,7 +181,7 @@ export default function CommandCenter() {
           </Stat>
         </Panel>
         <Panel label="POSITIVE NET EDGE">
-          <Stat label="AFTER ALL COSTS" sub={<span className="text-dim">would profit</span>}>
+          <Stat label="WOULD BE TAKEN" sub={<span className="text-dim">clears every gate</span>}>
             <span className={cx("tnum text-[22px]", viable.length > 0 ? "text-up" : "text-muted")}>
               {viable.length}
             </span>
@@ -203,6 +205,102 @@ export default function CommandCenter() {
           </Stat>
         </Panel>
       </div>
+
+      {/* ----------------------------------------------------------- sleeves */}
+      <Panel
+        label="SLEEVES"
+        hint="SEPARATELY MANDATED BOOKS · INDEPENDENT RISK LIMITS"
+        right={
+          <Link href="/allocation" className="micro text-accent hover:underline">
+            ALLOCATE →
+          </Link>
+        }
+        flush
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-line">
+                <Th>SLEEVE</Th>
+                <Th>MANDATE</Th>
+                <Th right>ALLOCATED</Th>
+                <Th right>SHARE</Th>
+                <Th right>TARGET APR</Th>
+                <Th right>EXPECT DD</Th>
+                <Th>STATE</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.sleeves.map((s) => (
+                <tr key={s.def.id} className="border-b border-line/60">
+                  <Td>
+                    <span className="text-ink">{s.def.name}</span>
+                  </Td>
+                  <Td>
+                    <span className="text-dim">{s.def.strategies.join(" · ")}</span>
+                  </Td>
+                  <Td right>
+                    <Money usd={s.allocatedUsd} />
+                  </Td>
+                  <Td right>
+                    <span className="tnum">{(s.shareOfNav * 100).toFixed(0)}%</span>
+                  </Td>
+                  <Td right>
+                    <span className="tnum">
+                      <span className={s.def.targetAprLow < 0 ? "text-down" : "text-up"}>
+                        {(s.def.targetAprLow * 100).toFixed(0)}%
+                      </span>
+                      <span className="text-dim"> … </span>
+                      <span className="text-up">{(s.def.targetAprHigh * 100).toFixed(0)}%</span>
+                    </span>
+                  </Td>
+                  <Td right>
+                    <span className="tnum text-warn">
+                      −{(s.def.expectedMaxDrawdown * 100).toFixed(0)}%
+                    </span>
+                  </Td>
+                  <Td>
+                    <span className="flex items-center gap-2">
+                      <StatusDot
+                        state={s.tradable ? "ok" : s.allocation.halted ? "bad" : "idle"}
+                        pulse={s.tradable}
+                      />
+                      <span className="text-dim" title={s.blockedReason ?? undefined}>
+                        {s.tradable ? "ready" : s.allocation.halted ? "halted" : "inactive"}
+                      </span>
+                    </span>
+                  </Td>
+                </tr>
+              ))}
+              <tr>
+                <Td>
+                  <span className="text-muted">Reserve</span>
+                </Td>
+                <Td>
+                  <span className="text-dim">unassigned buffer</span>
+                </Td>
+                <Td right>
+                  <Money usd={portfolio.reserveUsd} />
+                </Td>
+                <Td right>
+                  <span className="tnum">
+                    {(Math.max(portfolio.reserveShare, 0) * 100).toFixed(0)}%
+                  </span>
+                </Td>
+                <Td right>
+                  <span className="text-dim">—</span>
+                </Td>
+                <Td right>
+                  <span className="text-dim">—</span>
+                </Td>
+                <Td>
+                  <span className="text-dim">cash</span>
+                </Td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       {/* ---------------------------------------------------------- signals */}
       <Panel
@@ -279,8 +377,8 @@ export default function CommandCenter() {
                       )}
                     </Td>
                     <Td>
-                      {o.taken ? (
-                        <Tag tone="up">TAKEN</Tag>
+                      {o.wouldTake ? (
+                        <Tag tone="up">WOULD TAKE</Tag>
                       ) : (
                         <span className="text-dim" title={o.rejectionDetail ?? undefined}>
                           {o.rejectionCode ? REJECTION_LABELS[o.rejectionCode] : "—"}

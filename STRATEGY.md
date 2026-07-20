@@ -188,6 +188,60 @@ Every intent passes through `calc/gate.ts` and gets a typed decision. Checks run
 
 Rejections carry a **reason and the values compared**, always. That's what makes the Signals screen work, and it's why "why is the system not trading?" is answerable here when it's impossible from PnL alone.
 
+
+---
+
+## 5a. Sleeves — different money at different risk
+
+The account is one pool of capital, but internally it is divided into **sleeves**: separately-mandated books that behave like independent sub-accounts. Each has its own capital allocation, its own permitted strategies, its own risk limits, and its own halt state.
+
+The property that makes this worth building rather than just "allocating differently" is **blast-radius isolation**. A sleeve that breaches its own drawdown limit halts *that sleeve only* — the market-neutral book keeps earning while the directional book sits in timeout. Without sleeves, a risky strategy either has the power to take the whole account down, or has to be sized so small it cannot matter. There is no middle setting.
+
+| Sleeve | Risk | Strategies | Target APR | Expect DD | Max lev |
+|---|---|---|---|---|---|
+| **Core** | Low | L1, L2, L3 | +8% … +20% | −6% | 3× |
+| **Accumulation** | Medium | B1, B2 | −60% … +100% | −75% | 1× |
+| **Systematic** | High | H1, H2, M2 | −20% … +40% | −35% | 2× |
+| **Opportunistic** | Very high | H3, H4 | −40% … +60% | −45% | 3× |
+
+Note the shape of that table. **Only Core has a positive floor.** Every other sleeve has a realistic year in which it loses money — that is what "higher risk" actually means, and the range is the honest representation of it.
+
+### On "higher risk should mean higher reward"
+
+Partly true, and worth being precise about, because the imprecise version is how people lose money.
+
+**What's true:** there is a genuine risk premium for holding assets others don't want to. Crypto beta has paid handsomely over a decade. Trend following has positive expectancy across decades and asset classes. These are real, and the Accumulation and Systematic sleeves exist to capture them.
+
+**What's not true:** that risk and return are reliably linked at the level of an individual decision or a single year. Higher risk buys a **wider distribution**, not a higher floor. The Systematic sleeve targeting +40% and losing 20% are the same fact stated twice, not a good case and a bad case. And most things marketed as "high risk, high reward" in crypto — high leverage, low-cap alts, most signal groups — have *negative* expected value after costs. They are high risk and low reward. The risk is not what pays.
+
+So the sleeve design draws the line at **compensated** risk: exposures with a defensible reason someone is paying us. Beta, trend, and dislocation-fading all qualify. Leverage on a directional bet does not, which is why Accumulation is capped at 1× by definition rather than by configuration — leverage on buy-and-hold converts an ordinary drawdown into a liquidation.
+
+### The Accumulation sleeve is deliberately "just hold Bitcoin"
+
+You were right to push on this: I said a well-built system may underperform holding BTC, and holding BTC can also fall hard. Both are true, and the honest response is to make that exposure an explicit, sized decision rather than a rhetorical point.
+
+So Accumulation *is* the hold-Bitcoin sleeve, with a funding overlay when carry is rich enough to be worth it. It is the sleeve that captures a bull market and the sleeve that falls 70%+ with one. It does not stop out, because a stop on a long-horizon holding just realises the drawdown and misses the recovery. If you would not sit through BTC halving twice, the money does not go here — it goes in Core.
+
+### Minimum viable capital per sleeve
+
+Splitting a small account into four sleeves is **not** diversification — it is four sleeves too small to trade. Each sleeve needs enough capital to place a position at the exchange minimum without breaching its own position cap:
+
+```
+minimum_viable = venue_min_notional / sleeve_max_position_pct
+```
+
+Opportunistic caps positions at 15% of sleeve capital, so it needs ~$67 before it can place one legal trade. Below that the Allocation screen marks it untradable and says why, rather than showing it as funded and quietly never trading. At small balances the correct posture is **one or two sleeves**, not four.
+
+### Suggested postures
+
+Three presets, as starting points rather than recommendations:
+
+- **Defensive** — Core 60%, rest 0%, large reserve. Lowest variance; gives up the upside entirely.
+- **Balanced** — Core 50%, Accumulation 30%, Systematic 10%. Participates in a bull market while the neutral book carries the quiet periods.
+- **Growth** — Core 30%, Accumulation 40%, Systematic 20%, Opportunistic 5%. Expect drawdowns in the tens of percent. Only honest with money you can leave alone for years.
+
+Reserve is not wasted capital. It is what lets you add to a sleeve *after* a drawdown rather than during one, and it is the buffer that stops a margin top-up becoming a forced unwind.
+
 ---
 
 ## 6. What we're actually going to do, in order
@@ -224,7 +278,8 @@ Rejections carry a **reason and the values compared**, always. That's what makes
 | Position sizing | `dashboard/src/lib/calc/sizing.ts` |
 | Capital ladder | `dashboard/src/lib/calc/tiers.ts` |
 | The risk gate | `dashboard/src/lib/calc/gate.ts` |
-| Tests (65) | `dashboard/src/lib/calc/calc.test.ts` |
+| Sleeves & allocation | `dashboard/src/lib/portfolio/sleeves.ts` |
+| Tests (99) | `dashboard/src/lib/calc/calc.test.ts`, `dashboard/src/lib/portfolio/sleeves.test.ts` |
 | Venue adapters | `dashboard/src/lib/market/venues.ts` |
 | Scanner | `dashboard/src/lib/engine/scanner.ts` |
 | Tunable thresholds | `dashboard/src/lib/engine/config.ts` |

@@ -22,6 +22,12 @@ import {
 import { evaluateCarry, evaluateFundingSpread, classifyFundingRegime } from "@/lib/calc/funding";
 import { evaluateGate, type RejectionCode } from "@/lib/calc/gate";
 import { resolveTier, type TierId } from "@/lib/calc/tiers";
+import {
+  computePortfolio,
+  sleeveForStrategy,
+  type PortfolioState,
+} from "@/lib/portfolio/sleeves";
+import type { SleeveContext } from "@/lib/calc/gate";
 import type { MarketSnapshot, Quote } from "@/lib/market/types";
 import type { EngineConfig } from "./config";
 
@@ -36,6 +42,9 @@ export type ScoredOpportunity = {
   /** Human-readable execution route, e.g. "Binance spot ⇄ Binance perp". */
   route: string;
   riskTier: "low" | "medium" | "high";
+  /** Which sleeve this opportunity would be funded from. */
+  sleeveId: string;
+  sleeveName: string;
 
   /** Gross edge before any cost, in bps over the expected hold. */
   grossBps: number;
@@ -56,7 +65,21 @@ export type ScoredOpportunity = {
   /** Funding context, for carry strategies. */
   fundingApr?: number;
 
+  /**
+   * Whether this opportunity actually became an order. Always false while the
+   * system is in shadow.
+   */
   taken: boolean;
+  /**
+   * Whether it would have been taken if the strategy were live — i.e. it
+   * cleared every economic, sleeve and risk check.
+   *
+   * This is the number shadow mode exists to produce. Reporting only "in shadow
+   * mode" on every row would make the feed useless for its actual purpose:
+   * finding out whether the configuration would trade, and what stops it.
+   */
+  wouldTake: boolean;
+  /** The binding constraint, evaluated as though the strategy were live. */
   rejectionCode: RejectionCode | null;
   rejectionDetail: string | null;
 };
@@ -88,6 +111,37 @@ function legFor(q: Quote, notionalUsd: number): LegSpec {
     notionalUsd,
     spreadBps: q.spreadBps,
     depthUsd: q.topOfBookUsd,
+  };
+}
+
+/**
+ * Build the gate's sleeve context for a strategy.
+ *
+ * Returns undefined when the strategy maps to no sleeve, which would be a
+ * configuration bug rather than a normal state — the gate then applies
+ * fund-level limits only rather than silently allowing an unbounded trade.
+ */
+function sleeveContextFor(
+  strategyCode: string,
+  portfolio: PortfolioState,
+): SleeveContext | undefined {
+  const def = sleeveForStrategy(strategyCode);
+  if (!def) return undefined;
+  const st = portfolio.sleeves.find((s) => s.def.id === def.id);
+  if (!st) return undefined;
+
+  return {
+    id: st.def.id,
+    name: st.def.name,
+    enabled: st.allocation.enabled,
+    halted: st.allocation.halted,
+    allocatedUsd: st.allocatedUsd,
+    deployedUsd: st.deployedUsd,
+    maxPositionUsd: st.maxPositionUsd,
+    maxLeverage: st.def.limits.maxLeverage,
+    maxConcurrentPositions: st.def.limits.maxConcurrentPositions,
+    openPositions: 0,
+    minimumViableUsd: st.minimumViableUsd,
   };
 }
 
@@ -127,12 +181,20 @@ export function scan(ctx: ScanContext): ScoredOpportunity[] {
       ? config.navUsd * config.legNotionalPctOfNav
       : config.shadowNotionalUsd;
 
+  // Sleeve state gates capital: each opportunity is funded from exactly one
+  // sleeve, with that sleeve's own limits applied on top of the fund's.
+  const portfolio = computePortfolio(config.navUsd, config.sleeves);
+
   const out: ScoredOpportunity[] = [];
   const byAsset = index(snapshot.quotes);
 
   for (const [asset, quotes] of byAsset) {
-    out.push(...scanCarry(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, ctx));
-    out.push(...scanFundingSpread(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues));
+    out.push(
+      ...scanCarry(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, ctx, portfolio),
+    );
+    out.push(
+      ...scanFundingSpread(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, portfolio),
+    );
   }
 
   return out.sort((a, b) => b.netBps - a.netBps);
@@ -149,8 +211,10 @@ function scanCarry(
   dataAgeSeconds: number,
   degraded: Set<string>,
   ctx: ScanContext,
+  portfolio: PortfolioState,
 ): ScoredOpportunity[] {
   const out: ScoredOpportunity[] = [];
+  const sleeve = sleeveContextFor("L1", portfolio);
 
   const venues = [...new Set(quotes.map((q) => q.venue))];
   for (const venue of venues) {
@@ -192,14 +256,16 @@ function scanCarry(
     const regimeBlocked =
       regime !== null && regime.positiveShare < config.minPositiveShare;
 
+    // Evaluated as though live so the feed reports the *binding* constraint —
+    // the sleeve, the economics, the risk limit — rather than masking all of
+    // them behind "in shadow mode". Nothing is executed either way: `taken` is
+    // gated on shadow separately below.
     let decision = evaluateGate({
       strategyCode: "L1",
-      // Nothing is live until a strategy has earned it through shadow evidence
-      // and a linked account exists. This is hard-coded to shadow for now
-      // rather than being a setting someone can flip by accident.
-      strategyMode: "shadow",
+      strategyMode: "live",
       tier,
       riskTier: "low",
+      sleeve,
       netEdgeBps: carry.netEdgeBps,
       minNetEdgeBps: config.minNetEdgeBps,
       intendedNotionalUsd: notionalUsd,
@@ -240,6 +306,8 @@ function scanCarry(
       asset,
       route: `${venue} spot ⇄ ${venue} perp`,
       riskTier: "low",
+      sleeveId: sleeve?.id ?? "unassigned",
+      sleeveName: sleeve?.name ?? "Unassigned",
       grossBps,
       feesBps: cost.feeBps,
       spreadBps: cost.spreadBps,
@@ -252,7 +320,10 @@ function scanCarry(
       notionalUsd,
       expectedProfitUsd: carry.expectedProfitUsd,
       fundingApr: carry.grossApr,
-      taken: decision.allowed,
+      // Live execution requires a linked account and a strategy promoted out of
+      // shadow on evidence. Neither exists yet, so nothing is ever taken.
+      taken: false,
+      wouldTake: decision.allowed,
       rejectionCode: decision.allowed ? null : decision.code,
       rejectionDetail: decision.allowed ? null : decision.detail,
     });
@@ -271,7 +342,9 @@ function scanFundingSpread(
   tier: ReturnType<typeof resolveTier>["current"],
   dataAgeSeconds: number,
   degraded: Set<string>,
+  portfolio: PortfolioState,
 ): ScoredOpportunity[] {
+  const sleeve = sleeveContextFor("L2", portfolio);
   const perps = quotes.filter(
     (q) => q.kind === "perp" && q.fundingApr !== undefined,
   );
@@ -311,9 +384,10 @@ function scanFundingSpread(
 
   const decision = evaluateGate({
     strategyCode: "L2",
-    strategyMode: "shadow",
+    strategyMode: "live",
     tier,
     riskTier: "low",
+    sleeve,
     netEdgeBps: r.netEdgeBps,
     minNetEdgeBps: config.minNetEdgeBps,
     intendedNotionalUsd: notionalUsd,
@@ -344,6 +418,8 @@ function scanFundingSpread(
       asset,
       route: `Short ${short.venue} ⇄ Long ${long.venue}`,
       riskTier: "low",
+      sleeveId: sleeve?.id ?? "unassigned",
+      sleeveName: sleeve?.name ?? "Unassigned",
       grossBps,
       feesBps: cost.feeBps,
       spreadBps: cost.spreadBps,
@@ -356,7 +432,8 @@ function scanFundingSpread(
       notionalUsd,
       expectedProfitUsd: r.expectedProfitUsd,
       fundingApr: r.spreadApr,
-      taken: decision.allowed,
+      taken: false,
+      wouldTake: decision.allowed,
       rejectionCode: decision.allowed ? null : decision.code,
       rejectionDetail: decision.allowed ? null : decision.detail,
     },

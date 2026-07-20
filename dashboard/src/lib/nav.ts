@@ -67,6 +67,12 @@ export const NAV: NavGroup[] = [
         hint: "Which strategies run, in which mode, with what allocation",
       },
       {
+        key: "allocation",
+        label: "Allocation",
+        href: "/allocation",
+        hint: "Divide capital into sleeves — separate mandates, separate risk limits",
+      },
+      {
         key: "control",
         label: "Control",
         href: "/control",

@@ -12,6 +12,12 @@
  * one was quietly bleeding capital.
  */
 
+import {
+  defaultAllocations,
+  reconcileAllocations,
+  type SleeveAllocation,
+} from "@/lib/portfolio/sleeves";
+
 export type EngineConfig = {
   /* -------------------------------------------------- capital & operation */
 
@@ -101,6 +107,15 @@ export type EngineConfig = {
 
   /** Max drawdown from high-water mark before halting, as a fraction. */
   maxDrawdownPct: number;
+
+  /**
+   * Per-sleeve capital allocations.
+   *
+   * Sleeves divide one account into separately-mandated books, each with its
+   * own limits and its own halt state, so a breach in one does not stop the
+   * others. See `lib/portfolio/sleeves.ts`.
+   */
+  sleeves: SleeveAllocation[];
 };
 
 export const DEFAULT_CONFIG: EngineConfig = {
@@ -124,6 +139,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   maxDataAgeSeconds: 30,
   dailyLossLimitPct: 0.02,
   maxDrawdownPct: 0.08,
+  sleeves: defaultAllocations(),
 };
 
 /** Bounds for every numeric field, enforced on save. */
@@ -288,6 +304,10 @@ export function sanitiseConfig(input: unknown): {
       continue;
     }
 
+    // Sleeves are a structured list, not a scalar — reconciled below once NAV
+    // is known, since the allocation total is validated against it.
+    if (key === "sleeves") continue;
+
     const n = Number(raw);
     if (!Number.isFinite(n)) {
       adjustments.push(`${key}: not a number, kept default`);
@@ -302,6 +322,18 @@ export function sanitiseConfig(input: unknown): {
     } else {
       (out[key] as number) = n;
     }
+  }
+
+  // Sleeve allocations are reconciled after the scalar pass so NAV is already
+  // resolved — the total is validated against it, and over-allocation scales
+  // every sleeve down proportionally rather than failing the save.
+  {
+    const incoming = Array.isArray(src.sleeves)
+      ? (src.sleeves as SleeveAllocation[])
+      : defaultAllocations();
+    const r = reconcileAllocations(out.navUsd, incoming);
+    out.sleeves = r.allocations;
+    adjustments.push(...r.adjustments);
   }
 
   // Cross-field invariant: a strategy must never be able to request more

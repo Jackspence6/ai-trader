@@ -47,7 +47,9 @@ export default function SignalsPage() {
     return r;
   }, [all, strategy, onlyViable]);
 
-  const viable = all.filter((o) => o.netBps > 0);
+  // "Viable" = cleared every gate as though live. Positive edge alone is not
+  // enough; a sleeve being off or underfunded still blocks it.
+  const viable = all.filter((o) => o.wouldTake);
   const best = viable[0] ?? null;
 
   const byReason = useMemo(() => {
@@ -84,7 +86,7 @@ export default function SignalsPage() {
         <Panel label="POSITIVE NET EDGE">
           <Stat
             label="AFTER ALL COSTS"
-            sub={<span className="text-dim">would profit if funded</span>}
+            sub={<span className="text-dim">clears every gate</span>}
           >
             <span
               className={cx(
@@ -214,6 +216,7 @@ function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
         <thead>
           <tr className="border-b border-line">
             <Th>ST</Th>
+            <Th>SLEEVE</Th>
             <Th>ASSET</Th>
             <Th>ROUTE</Th>
             <Th right>FUNDING APR</Th>
@@ -235,6 +238,9 @@ function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
                 <span className="micro text-accent" title={o.strategyName}>
                   {o.strategy}
                 </span>
+              </Td>
+              <Td>
+                <span className="text-dim">{o.sleeveName}</span>
               </Td>
               <Td>
                 <span className="text-ink">{o.asset}</span>
@@ -296,8 +302,8 @@ function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
                 <Money usd={o.capitalRequiredUsd} dp={0} className="text-muted" />
               </Td>
               <Td>
-                {o.taken ? (
-                  <Tag tone="up">TAKEN</Tag>
+                {o.wouldTake ? (
+                  <Tag tone="up">WOULD TAKE</Tag>
                 ) : (
                   <span
                     className="text-dim"

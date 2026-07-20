@@ -29,7 +29,12 @@ export type RejectionCode =
   | "market_data_stale"
   | "global_halt"
   | "leverage_cap"
-  | "daily_loss_limit";
+  | "daily_loss_limit"
+  | "sleeve_disabled"
+  | "sleeve_halted"
+  | "sleeve_budget_exhausted"
+  | "sleeve_position_cap"
+  | "sleeve_undercapitalised";
 
 export const REJECTION_LABELS: Record<RejectionCode, string> = {
   net_edge_below_threshold: "Net edge below threshold",
@@ -46,6 +51,38 @@ export const REJECTION_LABELS: Record<RejectionCode, string> = {
   global_halt: "Global halt active",
   leverage_cap: "Leverage cap exceeded",
   daily_loss_limit: "Daily loss limit hit",
+  sleeve_disabled: "Sleeve disabled",
+  sleeve_halted: "Sleeve halted by risk breach",
+  sleeve_budget_exhausted: "Sleeve capital fully deployed",
+  sleeve_position_cap: "Exceeds sleeve position cap",
+  sleeve_undercapitalised: "Sleeve below minimum viable capital",
+};
+
+/**
+ * The sleeve context an intent is being evaluated against.
+ *
+ * Present on every intent, because every intent belongs to exactly one sleeve.
+ * These limits are checked *in addition to* the fund-level ones, and they are
+ * what gives sleeves their blast-radius isolation: a sleeve can be halted, out
+ * of capital, or undercapitalised without affecting any other sleeve.
+ */
+export type SleeveContext = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  halted: boolean;
+  /** Capital assigned to this sleeve. */
+  allocatedUsd: number;
+  /** Of that, how much is already in positions. */
+  deployedUsd: number;
+  /** Largest single position permitted inside this sleeve. */
+  maxPositionUsd: number;
+  /** Sleeve-specific leverage ceiling. */
+  maxLeverage: number;
+  maxConcurrentPositions: number;
+  openPositions: number;
+  /** Capital floor below which the sleeve cannot trade usefully. */
+  minimumViableUsd: number;
 };
 
 export type GateInput = {
@@ -53,6 +90,8 @@ export type GateInput = {
   strategyMode: "live" | "paper" | "shadow" | "off";
   tier: Tier;
   riskTier: "low" | "medium" | "high";
+  /** Omit only for fund-level checks that genuinely have no sleeve. */
+  sleeve?: SleeveContext;
 
   /** Net edge over the whole expected hold, in bps of leg notional. */
   netEdgeBps: number;
@@ -140,6 +179,58 @@ export function evaluateGate(g: GateInput): GateDecision {
       code: "strategy_tier_locked",
       detail: `${g.strategyCode} is not live-eligible at tier ${g.tier.id}`,
     };
+  }
+
+  // --- sleeve permission ---------------------------------------------------
+  //
+  // Checked here rather than alongside the fund-level capacity rules, because a
+  // disabled or halted sleeve is a statement about permission, not capacity —
+  // and reporting it as "budget exhausted" would send the operator to add
+  // capital when what they need to do is un-halt the sleeve.
+
+  if (g.sleeve) {
+    const s = g.sleeve;
+
+    if (!s.enabled) {
+      return {
+        allowed: false,
+        code: "sleeve_disabled",
+        detail: `${s.name} sleeve is switched off`,
+      };
+    }
+
+    if (s.halted) {
+      return {
+        allowed: false,
+        code: "sleeve_halted",
+        detail: `${s.name} sleeve halted by a risk breach; other sleeves are unaffected`,
+      };
+    }
+
+    if (s.allocatedUsd < s.minimumViableUsd) {
+      return {
+        allowed: false,
+        code: "sleeve_undercapitalised",
+        detail: `${s.name} has $${s.allocatedUsd.toFixed(2)}, needs $${s.minimumViableUsd.toFixed(2)} to place a position without breaching its own cap`,
+      };
+    }
+
+    // The tighter of the two leverage ceilings always wins.
+    if (g.leverage > s.maxLeverage) {
+      return {
+        allowed: false,
+        code: "leverage_cap",
+        detail: `Requested ${g.leverage}x exceeds the ${s.name} sleeve cap of ${s.maxLeverage}x`,
+      };
+    }
+
+    if (s.openPositions >= s.maxConcurrentPositions) {
+      return {
+        allowed: false,
+        code: "sleeve_position_cap",
+        detail: `${s.openPositions}/${s.maxConcurrentPositions} positions open in ${s.name}`,
+      };
+    }
   }
 
   if (g.leverage > g.maxLeverage) {
@@ -244,7 +335,26 @@ export function evaluateGate(g: GateInput): GateDecision {
       ? (g.freeBalanceUsd / g.capitalRequiredUsd) * g.intendedNotionalUsd
       : g.intendedNotionalUsd;
 
-  const sized = Math.min(g.intendedNotionalUsd, budgetHeadroom, fundableNotional);
+  const limits = [g.intendedNotionalUsd, budgetHeadroom, fundableNotional];
+
+  // Sleeve constraints are additional ceilings, never a way to size *up*. A
+  // sleeve with room to spare cannot lift a fund-level limit.
+  if (g.sleeve) {
+    const s = g.sleeve;
+    const sleeveHeadroom = s.allocatedUsd - s.deployedUsd;
+
+    if (sleeveHeadroom <= 0) {
+      return {
+        allowed: false,
+        code: "sleeve_budget_exhausted",
+        detail: `${s.name} has $${s.allocatedUsd.toFixed(2)} allocated, all of it deployed`,
+      };
+    }
+
+    limits.push(sleeveHeadroom, s.maxPositionUsd);
+  }
+
+  const sized = Math.min(...limits);
 
   if (sized < g.venueMinNotionalUsd) {
     return {

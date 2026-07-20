@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local engine state (config + audit log)
 /.data/
+
+# local dev server log
+dev.log
