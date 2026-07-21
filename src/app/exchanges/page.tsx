@@ -253,7 +253,7 @@ function VaultKeyBanner() {
       <p className="mt-2 text-[11px] leading-relaxed text-dim">
         Generate one with{" "}
         <code className="text-muted">openssl rand -base64 32</code> and put it in{" "}
-        <code className="text-muted">dashboard/.env.local</code> as{" "}
+        <code className="text-muted">.env.local</code> as{" "}
         <code className="text-muted">VAULT_KEY=…</code>. It is never written to disk by
         this system, and losing it means re-adding every credential.
       </p>

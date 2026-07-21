@@ -59,7 +59,7 @@ We are not predicting anything. We are being paid to warehouse a risk that lever
 
 ### The economics, precisely
 
-Two calculations do most of the work here, and both are implemented in `dashboard/src/lib/calc/funding.ts`.
+Two calculations do most of the work here, and both are implemented in `src/lib/calc/funding.ts`.
 
 **Capital efficiency.** The naive view is that $1,000 of carry needs $2,000 — $1,000 of spot plus $1,000 to short. It doesn't: the short only needs *margin*. At leverage L, capital is `notional × (1 + 1/L)`, so return on capital is multiplied by `L/(L+1)`:
 
@@ -125,7 +125,7 @@ The cost is real too: both legs are perps, so both need margin and both carry li
 
 ## 4. Indicators — which, and why each one
 
-Every indicator here is a **filter or a sizing input**, never a standalone entry. That distinction is the difference between a system and a collection of superstitions. All are implemented as pure functions in `dashboard/src/lib/calc/indicators.ts` and unit-tested against hand-computed values.
+Every indicator here is a **filter or a sizing input**, never a standalone entry. That distinction is the difference between a system and a collection of superstitions. All are implemented as pure functions in `src/lib/calc/indicators.ts` and unit-tested against hand-computed values.
 
 | Indicator | Used for | Why this one |
 |---|---|---|
@@ -272,16 +272,16 @@ Reserve is not wasted capital. It is what lets you add to a sleeve *after* a dra
 
 | Concern | File |
 |---|---|
-| Indicators | `dashboard/src/lib/calc/indicators.ts` |
-| Cost model | `dashboard/src/lib/calc/costs.ts` |
-| Funding carry + spread + regime | `dashboard/src/lib/calc/funding.ts` |
-| Position sizing | `dashboard/src/lib/calc/sizing.ts` |
-| Capital ladder | `dashboard/src/lib/calc/tiers.ts` |
-| The risk gate | `dashboard/src/lib/calc/gate.ts` |
-| Sleeves & allocation | `dashboard/src/lib/portfolio/sleeves.ts` |
-| Tests (99) | `dashboard/src/lib/calc/calc.test.ts`, `dashboard/src/lib/portfolio/sleeves.test.ts` |
-| Venue adapters | `dashboard/src/lib/market/venues.ts` |
-| Scanner | `dashboard/src/lib/engine/scanner.ts` |
-| Tunable thresholds | `dashboard/src/lib/engine/config.ts` |
+| Indicators | `src/lib/calc/indicators.ts` |
+| Cost model | `src/lib/calc/costs.ts` |
+| Funding carry + spread + regime | `src/lib/calc/funding.ts` |
+| Position sizing | `src/lib/calc/sizing.ts` |
+| Capital ladder | `src/lib/calc/tiers.ts` |
+| The risk gate | `src/lib/calc/gate.ts` |
+| Sleeves & allocation | `src/lib/portfolio/sleeves.ts` |
+| Tests (99) | `src/lib/calc/calc.test.ts`, `src/lib/portfolio/sleeves.test.ts` |
+| Venue adapters | `src/lib/market/venues.ts` |
+| Scanner | `src/lib/engine/scanner.ts` |
+| Tunable thresholds | `src/lib/engine/config.ts` |
 
 All calculation code is pure and side-effect free, so the same functions run in the dashboard, the backtester and (ported) the live engine. If backtest and live can diverge, they will — and you find out with real money.

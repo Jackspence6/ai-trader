@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "VAULT_KEY is not set. Generate one with `openssl rand -base64 32` and put it in dashboard/.env.local.",
+          "VAULT_KEY is not set. Generate one with `openssl rand -base64 32` and put it in .env.local.",
       },
       { status: 400 },
     );

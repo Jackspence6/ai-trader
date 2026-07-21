@@ -74,7 +74,7 @@ export function masterKeyMaterial(): string {
     throw new VaultError(
       "VAULT_KEY is not set (or is shorter than 16 characters). " +
         "Generate one with:  openssl rand -base64 32\n" +
-        "Then export it, or put it in dashboard/.env.local — never in the repo.",
+        "Then export it, or put it in .env.local — never in the repo.",
     );
   }
   return key;
