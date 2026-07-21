@@ -244,6 +244,47 @@ Reserve is not wasted capital. It is what lets you add to a sleeve *after* a dra
 
 ---
 
+## 5b. Forex — the diversifier, not the casino
+
+You asked whether forex is "higher risk, higher reward." I measured it before answering, with the same volatility code the crypto book uses, on ~1 year of daily closes:
+
+| Market | 30-day vol | 90-day vol | Max drawdown |
+|---|---|---|---|
+| EUR/USD | 6.4% | 7.0% | −4.8% |
+| GBP/USD | 7.3% | 8.2% | −5.6% |
+| JPY/USD | 5.1% | 7.1% | −3.9% |
+| ZAR/USD | 11.1% | 15.6% | −14.5% |
+| BTC/USDT | 32.1% | 34.5% | −53.0% |
+| ETH/USDT | 45.7% | 48.4% | −67.6% |
+| SOL/USDT | 48.1% | 52.3% | −74.9% |
+
+**Forex is roughly five times *less* volatile than crypto.** EUR/USD needs about 5× leverage just to carry the same risk as spot BTC. Its reputation as a high-octane market is entirely a leverage artefact — brokers offer 30× and up, and that is what makes small currency moves feel violent. It is also why regulator-mandated disclosures put **68–85% of retail CFD accounts in the loss column**. The risk in retail forex is not the currencies; it is the leverage stacked on top of them.
+
+So forex is in this system, but labelled honestly: it is the **low-volatility sleeve**, not the risky one.
+
+### The reason to hold it anyway
+
+Correlation. Measured over 269 overlapping sessions:
+
+- EUR/USD vs BTC daily returns: **−0.07**
+- ZAR/USD vs BTC: **−0.20**
+
+Effectively uncorrelated. Two uncorrelated books of the same size have lower *combined* volatility than either alone — the closest thing to a free lunch in this whole design. That is the entire case for forex here: it steadies the portfolio, it does not juice it.
+
+### The two FX sleeves
+
+**FX Carry (F1)** — hold high-yield currencies against low-yield ones and collect the interest differential. The same shape as the crypto funding carry, but the carry comes from central-bank policy rates rather than perp funding. Capped at **2× leverage**. Two honest caveats: carry unwinds are violent and correlated (the yen-carry unwind of August 2024 erased years of differential in days — "picking up nickels in front of a steamroller" is the standard and accurate description), and it **does not work at most retail brokers**, whose swap markups are frequently large enough to make *both* directions negative.
+
+**FX Trend (F2)** — rules-based trend following on majors, volatility-sized with ATR stops. Currencies trend on macro cycles unrelated to crypto, which is the point. Capped at **3×**. Its failure mode is long stretches of chop, where a trend system bleeds small losses waiting for a move.
+
+Neither produces large numbers, by construction. A 7%-volatility asset cannot generate crypto-sized returns without leverage that would defeat the reason for holding it.
+
+### On the $1,000-a-day idea
+
+On a $10,000 book, $1,000 a day is a **10% daily return**. Compounded, that is not a trading strategy — it is a number no fund, desk or algorithm sustains, because position sizes that could produce it also produce total ruin within weeks on the losing runs. The realistic target remains **10–25% annually** on the core, roughly $3–7 a day on average with losing days mixed in. The *aggressive* posture pushes that toward 40–80% annually by weighting the directional sleeves — and pairs it with 35–45% drawdowns and losing streaks measured in months. That is the honest top of the range, and it is still two orders of magnitude below $1,000/day.
+
+---
+
 ## 6. What we're actually going to do, in order
 
 | Stage | Capital | What runs live | What we're learning |

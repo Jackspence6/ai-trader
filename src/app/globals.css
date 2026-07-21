@@ -31,6 +31,9 @@
   --color-warn: #ffb020; /* 10.7:1 */
   --color-accent: #8b93ff; /* 7.2:1  */
 
+  /* asset-class accents — crypto uses --color-accent, forex this teal-green */
+  --color-fx: #2fbf87; /* ~7.9:1 on --color-bg */
+
   /* categorical series — direct labels required */
   --color-s1: #3987e5;
   --color-s2: #008300;

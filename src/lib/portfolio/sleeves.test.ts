@@ -16,6 +16,7 @@ import {
   reconcileAllocations,
   SLEEVES,
   sleeveById,
+  sleevesIn,
   sleeveForStrategy,
   type SleeveAllocation,
 } from "./sleeves";
@@ -383,5 +384,62 @@ describe("sleeve isolation in the gate", () => {
     const d = evaluateGate(gateInput({ sleeve: undefined, globalHalt: true }));
     if (!d.allowed) expect(d.code).toBe("global_halt");
     else throw new Error("expected rejection");
+  });
+});
+
+describe("asset classes", () => {
+  it("tags every sleeve with an asset class", () => {
+    for (const s of SLEEVES) {
+      expect(["crypto", "forex"]).toContain(s.assetClass);
+    }
+  });
+
+  it("has both crypto and forex sleeves", () => {
+    expect(sleevesIn("crypto").length).toBeGreaterThan(0);
+    expect(sleevesIn("forex").length).toBeGreaterThan(0);
+  });
+
+  it("keeps FX sleeves at low leverage", () => {
+    // The whole argument for FX here is that it is low-volatility and
+    // uncorrelated. Leverage would erase the first property and add nothing —
+    // it is the thing 68-85% of retail CFD accounts lose money on. Pin it.
+    for (const s of sleevesIn("forex")) {
+      expect(s.limits.maxLeverage, `${s.name} leverage`).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("keeps FX drawdown expectations well below crypto's", () => {
+    // FX is ~5x less volatile; a forex sleeve claiming a crypto-sized drawdown
+    // would be miscalibrated and would mis-size every position.
+    const worstFx = Math.max(...sleevesIn("forex").map((s) => s.expectedMaxDrawdown));
+    const worstCrypto = Math.max(...sleevesIn("crypto").map((s) => s.expectedMaxDrawdown));
+    expect(worstFx).toBeLessThan(worstCrypto);
+  });
+
+  it("still maps every strategy code to exactly one sleeve, across classes", () => {
+    const seen = new Set<string>();
+    for (const s of SLEEVES) {
+      for (const code of s.strategies) {
+        expect(seen.has(code), `${code} in two sleeves`).toBe(false);
+        seen.add(code);
+      }
+    }
+  });
+});
+
+describe("aggressive preset", () => {
+  it("exists and stays within NAV", () => {
+    const a = applyPreset(1_000, "aggressive", defaultAllocations());
+    const total = a.reduce((x, s) => x + s.allocatedUsd, 0);
+    expect(total).toBeLessThanOrEqual(1_000 + 1e-9);
+  });
+
+  it("weights the high-risk sleeves harder than growth does", () => {
+    const growth = computePortfolio(1_000, applyPreset(1_000, "growth", defaultAllocations()));
+    const aggressive = computePortfolio(
+      1_000,
+      applyPreset(1_000, "aggressive", defaultAllocations()),
+    );
+    expect(aggressive.blendedExpectedDrawdown).toBeGreaterThan(growth.blendedExpectedDrawdown);
   });
 });

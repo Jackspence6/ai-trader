@@ -23,9 +23,47 @@
 
 export type RiskBand = "low" | "medium" | "high" | "very-high";
 
+/**
+ * Asset class.
+ *
+ * A first-class dimension rather than a label, because the two classes differ
+ * in ways that matter to every calculation downstream: forex is roughly 5x less
+ * volatile than crypto (EUR/USD ~7% annualised against BTC ~34%), trades on
+ * business days only, and is priced in pips rather than percent.
+ *
+ * The reason to hold both is **correlation, not return**. Measured over 269
+ * overlapping sessions, EUR/USD against BTC is -0.07 and ZAR/USD against BTC is
+ * -0.20 — effectively uncorrelated. Two uncorrelated books of the same size
+ * have lower combined volatility than either alone, which is a real and rare
+ * free lunch. It is not a way to make more money per unit of capital.
+ */
+export type AssetClass = "crypto" | "forex";
+
+export const ASSET_CLASSES: {
+  id: AssetClass;
+  label: string;
+  note: string;
+  /** Typical annualised volatility of the underlying, measured not assumed. */
+  typicalVol: string;
+}[] = [
+  {
+    id: "crypto",
+    label: "Crypto",
+    note: "Trades continuously. High volatility, deep perp markets, funding rates to harvest.",
+    typicalVol: "34–52%",
+  },
+  {
+    id: "forex",
+    label: "Forex",
+    note: "Business days only. Low volatility and near-uncorrelated with crypto — held to steady the book, not to juice it.",
+    typicalVol: "7–16%",
+  },
+];
+
 export type SleeveDef = {
   id: string;
   name: string;
+  assetClass: AssetClass;
   band: RiskBand;
   /** One-line mandate — what this sleeve is *for*. */
   mandate: string;
@@ -67,6 +105,7 @@ export type SleeveDef = {
 export const SLEEVES: SleeveDef[] = [
   {
     id: "core",
+    assetClass: "crypto",
     name: "Core",
     band: "low",
     mandate:
@@ -89,6 +128,7 @@ export const SLEEVES: SleeveDef[] = [
   },
   {
     id: "accumulation",
+    assetClass: "crypto",
     name: "Accumulation",
     band: "medium",
     mandate:
@@ -111,6 +151,7 @@ export const SLEEVES: SleeveDef[] = [
   },
   {
     id: "systematic",
+    assetClass: "crypto",
     name: "Systematic",
     band: "high",
     mandate:
@@ -133,6 +174,7 @@ export const SLEEVES: SleeveDef[] = [
   },
   {
     id: "opportunistic",
+    assetClass: "crypto",
     name: "Opportunistic",
     band: "very-high",
     mandate:
@@ -153,9 +195,65 @@ export const SLEEVES: SleeveDef[] = [
     doesNotDo:
       "Does not scale. The edges are real but small and capacity-limited; this sleeve does not become the main engine no matter how well it performs.",
   },
+  {
+    id: "fx-carry",
+    assetClass: "forex",
+    name: "FX Carry",
+    band: "low",
+    mandate:
+      "Hold high-yield currencies against low-yield ones and collect the interest differential. The original carry trade, and the same shape as the crypto funding carry this system already runs.",
+    strategies: ["F1"],
+    targetAprLow: -0.05,
+    targetAprHigh: 0.08,
+    expectedMaxDrawdown: 0.12,
+    limits: {
+      dailyLossPct: 0.02,
+      maxDrawdownPct: 0.1,
+      maxPositionPct: 0.3,
+      // Deliberately low. Leverage is the only thing that makes forex feel
+      // exciting, and it adds no expected return — it scales both directions
+      // and adds financing cost. 2x is enough to make a 7%-vol asset
+      // meaningful without turning it into the thing 68-85% of retail CFD
+      // accounts lose money on.
+      maxLeverage: 2,
+      maxConcurrentPositions: 4,
+    },
+    primaryRisk:
+      "Carry unwinds are violent and correlated. High-yield currencies fall fastest exactly when everything else does — the yen carry unwind of August 2024 erased years of accumulated differential in days. Picking up nickels in front of a steamroller is the standard description and it is accurate.",
+    doesNotDo:
+      "Does not work at most retail brokers. Swap markups are frequently large enough to make BOTH directions negative, so you pay to hold either side — the differential has to survive that before anything is left.",
+  },
+  {
+    id: "fx-trend",
+    assetClass: "forex",
+    name: "FX Trend",
+    band: "medium",
+    mandate:
+      "Rules-based trend following on major pairs, volatility-sized with ATR stops. Currencies trend on macro cycles that have nothing to do with crypto, which is the entire reason this sleeve exists.",
+    strategies: ["F2"],
+    targetAprLow: -0.15,
+    targetAprHigh: 0.25,
+    expectedMaxDrawdown: 0.2,
+    limits: {
+      dailyLossPct: 0.03,
+      maxDrawdownPct: 0.18,
+      maxPositionPct: 0.25,
+      maxLeverage: 3,
+      maxConcurrentPositions: 4,
+    },
+    primaryRisk:
+      "Long stretches of chop. Majors range for months at a time, and a trend system in a range bleeds small losses continuously while waiting for a move that may not come.",
+    doesNotDo:
+      "Does not produce large numbers. A 7%-volatility asset cannot generate crypto-sized returns without leverage that would defeat the point of holding it — this sleeve is here to be uncorrelated, not to be big.",
+  },
 ];
 
 export const SLEEVE_IDS = SLEEVES.map((s) => s.id);
+
+/** Sleeves in one asset class. */
+export function sleevesIn(assetClass: AssetClass): SleeveDef[] {
+  return SLEEVES.filter((s) => s.assetClass === assetClass);
+}
 
 export function sleeveById(id: string): SleeveDef | undefined {
   return SLEEVES.find((s) => s.id === id);
@@ -413,7 +511,27 @@ export const PRESETS: Record<
     label: "Growth",
     description:
       "Majority directional. Expect drawdowns in the tens of percent — this posture is only honest with money you can leave alone for years.",
-    weights: { core: 0.3, accumulation: 0.4, systematic: 0.2, opportunistic: 0.05 },
+    weights: {
+      core: 0.25,
+      accumulation: 0.35,
+      systematic: 0.2,
+      opportunistic: 0.05,
+      "fx-trend": 0.05,
+      "fx-carry": 0.05,
+    },
+  },
+  aggressive: {
+    label: "Aggressive",
+    description:
+      "Weighted hard toward the directional sleeves. Targets roughly 40–80% a year and expects 35–45% drawdowns, with losing streaks measured in months. Only defensible with money whose loss would change nothing about your life.",
+    weights: {
+      core: 0.15,
+      accumulation: 0.3,
+      systematic: 0.35,
+      opportunistic: 0.12,
+      "fx-trend": 0.05,
+      "fx-carry": 0,
+    },
   },
 };
 

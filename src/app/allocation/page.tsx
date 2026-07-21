@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   applyPreset,
+  ASSET_CLASSES,
   computePortfolio,
   minimumViableCapital,
   PRESETS,
@@ -245,17 +246,51 @@ export default function AllocationPage() {
         )}
       </Panel>
 
-      {/* ---------------------------------------------------------- sleeves */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {portfolio.sleeves.map((s) => (
-          <SleeveCard
-            key={s.def.id}
-            state={s}
-            navUsd={nav}
-            onChange={(patch) => update(s.def.id, patch)}
-          />
-        ))}
-      </div>
+      {/* --------------------------------------------- sleeves, by asset class */}
+      {ASSET_CLASSES.map((ac) => {
+        const sleeves = portfolio.sleeves.filter((s) => s.def.assetClass === ac.id);
+        if (sleeves.length === 0) return null;
+
+        const allocated = sleeves.reduce((a, s) => a + s.allocatedUsd, 0);
+        const active = sleeves.filter((s) => s.allocation.enabled).length;
+
+        return (
+          <section
+            key={ac.id}
+            className={cx(
+              "border-l-2 pl-3",
+              ac.id === "crypto" ? "border-accent/40" : "border-fx/50",
+            )}
+          >
+            <div className="mb-2 flex flex-wrap items-baseline gap-2">
+              <span
+                className={cx(
+                  "text-[13px] font-medium tracking-wide",
+                  ac.id === "crypto" ? "text-accent" : "text-fx",
+                )}
+              >
+                {ac.label.toUpperCase()}
+              </span>
+              <span className="micro text-dim">{ac.note}</span>
+              <span className="micro ml-auto text-muted">
+                <Money usd={allocated} dp={0} /> · {active}/{sleeves.length} on · vol{" "}
+                {ac.typicalVol}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {sleeves.map((s) => (
+                <SleeveCard
+                  key={s.def.id}
+                  state={s}
+                  navUsd={nav}
+                  onChange={(patch) => update(s.def.id, patch)}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       {/* ------------------------------------------------------ the caveat */}
       <Panel label="HOW TO THINK ABOUT THIS" hint="READ BEFORE MOVING MONEY UP THE RISK CURVE">
@@ -303,14 +338,22 @@ function AllocationBar({ portfolio }: { portfolio: ReturnType<typeof computePort
     accumulation: "var(--color-s1)",
     systematic: "var(--color-warn)",
     opportunistic: "var(--color-down)",
+    "fx-carry": "var(--color-fx)",
+    "fx-trend": "var(--color-s4)",
   };
 
   const denom = Math.max(portfolio.navUsd, portfolio.totalAllocatedUsd, 1);
 
+  // Crypto sleeves first, then forex, so the bar reads as two blocks that
+  // match the two sections below it rather than an arbitrary order.
+  const ordered = [...portfolio.sleeves].sort((a, b) =>
+    a.def.assetClass === b.def.assetClass ? 0 : a.def.assetClass === "crypto" ? -1 : 1,
+  );
+
   return (
     <div className="mt-5">
       <div className="flex h-2 w-full overflow-hidden bg-raised">
-        {portfolio.sleeves.map((s) =>
+        {ordered.map((s) =>
           s.allocatedUsd > 0 ? (
             <div
               key={s.def.id}
