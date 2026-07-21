@@ -1,7 +1,7 @@
 /**
  * Fund state and the capital ledger.
  *
- * GET  — NAV, P&L, operator stakes, event history
+ * GET  — NAV, P&L, capital event history
  * POST — record a deposit or withdrawal
  *
  * NAV is derived here, never supplied by the caller. A client that could set
@@ -11,7 +11,7 @@
 
 import { recordCapitalEvent, resetLedger, type CapitalNature } from "@/lib/fund/ledger";
 import { getFundState, tradingPnl } from "@/lib/fund/nav";
-import { FUND, OPERATORS } from "@/lib/fund/operators";
+import { FUND } from "@/lib/fund/fund";
 
 export async function GET() {
   const state = await getFundState();
@@ -32,19 +32,10 @@ export async function GET() {
         mixed: state.mixed,
       },
       pnl: state.pnl,
-      // Operators are listed so actions can be attributed, not so capital can
-      // be divided. There are no stakes.
-      operators: OPERATORS.map((o) => ({
-        id: o.id,
-        name: o.name,
-        initials: o.initials,
-        colorVar: o.colorVar,
-      })),
       // Newest first — the ledger is read as "what happened lately".
       events: [...state.events].reverse(),
       openPositions: state.openPositions,
       unpriced: state.unpriced,
-      availableOperators: OPERATORS.map((o) => ({ id: o.id, name: o.name })),
     },
     { headers: { "cache-control": "no-store" } },
   );
@@ -53,7 +44,6 @@ export async function GET() {
 export async function POST(request: Request) {
   let body: {
     action?: string;
-    operatorId?: string;
     type?: string;
     amountUsd?: number;
     nature?: string;
@@ -80,7 +70,6 @@ export async function POST(request: Request) {
   const { pnl } = await tradingPnl();
 
   const result = await recordCapitalEvent({
-    operatorId: String(body.operatorId ?? ""),
     type,
     amountUsd: Number(body.amountUsd),
     nature,

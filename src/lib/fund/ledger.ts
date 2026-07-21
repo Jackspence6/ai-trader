@@ -1,10 +1,8 @@
 /**
  * Capital ledger — deposits, withdrawals, and the NAV they imply.
  *
- * The fund is wholly owned by Musket Goose. There are no fractional stakes, so
- * this ledger tracks **one balance**, not a cap table. Each event records which
- * operator entered it, for audit — that attribution is not a claim on the
- * money.
+ * The fund is wholly owned by Musket Goose. There are no fractional stakes and
+ * no members, so this ledger tracks **one balance**, not a cap table.
  *
  * **NAV is derived, never typed:**
  *
@@ -27,7 +25,6 @@
  */
 
 import { appendLog, readLog } from "@/lib/store/kv";
-import { OPERATORS } from "@/lib/fund/operators";
 
 export const CAPITAL_LOG = "capital_events";
 
@@ -36,8 +33,6 @@ export type CapitalNature = "simulated" | "real";
 export type CapitalEvent = {
   id: string;
   ts: number;
-  /** Which operator recorded this. Audit attribution, not ownership. */
-  operatorId: string;
   type: "deposit" | "withdrawal";
   /** Always positive; direction comes from `type`. */
   amountUsd: number;
@@ -179,18 +174,14 @@ export type RecordResult =
  * thing the index exists to exclude.
  */
 export async function recordCapitalEvent(input: {
-  operatorId: string;
   type: "deposit" | "withdrawal";
   amountUsd: number;
   nature: CapitalNature;
   note?: string;
   pnl?: TradingPnl;
 }): Promise<RecordResult> {
-  const { operatorId, type, amountUsd, nature, note, pnl = NO_PNL } = input;
+  const { type, amountUsd, nature, note, pnl = NO_PNL } = input;
 
-  if (!OPERATORS.some((o) => o.id === operatorId)) {
-    return { ok: false, error: `Unknown operator: ${operatorId}` };
-  }
   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
     return { ok: false, error: "Amount must be a positive number" };
   }
@@ -218,7 +209,6 @@ export async function recordCapitalEvent(input: {
   const event: CapitalEvent = {
     id: `cap_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
     ts: Date.now(),
-    operatorId,
     type,
     amountUsd,
     nature,

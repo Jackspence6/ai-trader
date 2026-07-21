@@ -33,7 +33,6 @@ type FundResponse = {
     nature: "simulated" | "real" | "mixed" | "none";
   };
   pnl: { totalUsd: number; realisedUsd: number; unrealisedUsd: number };
-  operators: { id: string; name: string; initials: string; colorVar: string }[];
   events: CapitalEvent[];
 };
 
@@ -148,28 +147,10 @@ export default function CommandCenter() {
               </div>
             </dl>
 
-            <div className="mt-3 border-t border-line pt-3">
-              <Micro className="mb-2">OPERATORS</Micro>
-              <div className="flex flex-wrap gap-1.5">
-                {(fund?.operators ?? []).map((o) => (
-                  <span
-                    key={o.id}
-                    title={o.name}
-                    className="flex size-6 items-center justify-center border text-[9px]"
-                    style={{
-                      borderColor: `color-mix(in oklab, var(${o.colorVar}) 45%, transparent)`,
-                      color: `var(${o.colorVar})`,
-                    }}
-                  >
-                    {o.initials}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2.5 text-[11px] leading-relaxed text-dim">
-                Attribution for the audit trail. No one holds a portion — the
-                fund is wholly owned and traded by rules, not by a person.
-              </p>
-            </div>
+            <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+              Wholly owned, one balance, no fractional stakes. Every decision
+              comes from the rules in the strategy layer, not from a person.
+            </p>
           </Panel>
 
           <Panel label="VENUE HEALTH" hint="PUBLIC MARKET FEEDS">

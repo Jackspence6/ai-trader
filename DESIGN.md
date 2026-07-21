@@ -222,8 +222,6 @@ This is the treasury layer: what we hold, where it sits, who it belongs to, and 
 
 ```
 Musket Goose ──── wholly owns ───→ Fund (one NAV, no fractional stakes)
-                                     ▲
-Operator ─── records / acts on ──────┘   (audit attribution only)
 
 Fund ─┬─ Venue Account ─┬─ API Credential (encrypted, trade-only)
       │  (exchange +    ├─ Balances (per asset, free/locked)
@@ -236,15 +234,15 @@ A **Venue Account** is one API credential on one exchange (or subaccount — Bin
 
 ### Ownership — superseded
 
-> **Corrected 2026-07-21.** This section originally described several operators each holding units of a pooled NAV, with per-person stakes. That is not the structure. **The fund is wholly owned by Musket Goose.** There are no fractional stakes, and the people below are *operators* — they act on the system, they do not own portions of it. Trading decisions come from rules and models, not from any of them.
+> **Corrected 2026-07-21.** This section originally described several operators each holding units of a pooled NAV, with per-person stakes. That is not the structure. **The fund is wholly owned by Musket Goose** — no fractional stakes, no members. Trading decisions come from rules and models, not from a person.
 >
-> A per-person ownership table would imply a claim that does not exist, so it was removed rather than left to be misread.
+> Per-person accounting was removed entirely, including the "recorded by" field on capital events. Without authentication that name is self-selected and unverified: it has the appearance of an audit trail without the substance, which is worse than none because it invites trust it cannot support. Real attribution arrives with real sessions.
 
 What survives from the unit model, repurposed, is the **performance index**.
 
 Units change only when capital moves, so NAV-per-unit is unaffected by deposits and withdrawals — it moves on trading P&L alone. That makes it a time-weighted return, and it answers the one question a balance cannot: *is the strategy working?* On a raw balance, adding $5,000 and earning $5,000 look identical. The index separates them.
 
-So the ledger tracks one balance, priced against an index that starts at 1.0000. Each capital event records which operator entered it, **for audit** — that attribution says who acted, not who owns anything.
+So the ledger tracks one balance, priced against an index that starts at 1.0000.
 
 ### Automated sync
 

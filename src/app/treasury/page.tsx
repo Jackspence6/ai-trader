@@ -7,9 +7,8 @@
  * P&L. That is what makes it compound, and what makes a wrong number
  * noticeable — if it moves, something happened and you can find out what.
  *
- * The fund is wholly owned by Musket Goose — there are no fractional stakes, so
- * this screen shows ONE balance rather than a cap table. Operators appear only
- * as the person who recorded a movement.
+ * The fund is wholly owned by Musket Goose — no fractional stakes and no
+ * members — so this screen shows ONE balance rather than a cap table.
  *
  * The performance index is the number worth watching. It moves on trading P&L
  * alone and is unaffected by deposits, so it answers "is the strategy working?"
@@ -47,11 +46,9 @@ type FundResponse = {
     feesUsd: number;
     totalUsd: number;
   };
-  operators: { id: string; name: string; initials: string; colorVar: string }[];
   events: CapitalEvent[];
   openPositions: number;
   unpriced: string[];
-  availableOperators: { id: string; name: string }[];
 };
 
 export default function Treasury() {
@@ -161,38 +158,14 @@ export default function Treasury() {
             </div>
           </dl>
 
-          <div className="mt-4 border-t border-line pt-3">
-            <Micro className="mb-2">OPERATORS</Micro>
-            <div className="flex flex-wrap gap-2">
-              {(d?.operators ?? []).map((o) => (
-                <span
-                  key={o.id}
-                  className="flex items-center gap-2 border border-line-bright px-2 py-1"
-                  title={o.name}
-                >
-                  <span
-                    className="flex size-5 items-center justify-center border text-[9px]"
-                    style={{
-                      borderColor: `color-mix(in oklab, var(${o.colorVar}) 45%, transparent)`,
-                      color: `var(${o.colorVar})`,
-                    }}
-                  >
-                    {o.initials}
-                  </span>
-                  <span className="text-[11.5px] text-muted">{o.name}</span>
-                </span>
-              ))}
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-dim">
-              Operators can move capital, halt trading and change configuration.
-              Every action is attributed to one of them in the audit trail — that
-              attribution records who acted, not who owns anything.
-            </p>
-          </div>
+          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            One owner, one balance. Capital events are recorded against the fund
+            rather than a person — without authentication, a self-selected name
+            would look like an audit trail without being one.
+          </p>
         </Panel>
 
         <CapitalForm
-          operators={d?.availableOperators ?? []}
           currentNature={nav?.nature ?? "none"}
           onDone={() => fund.refresh()}
         />
@@ -260,7 +233,6 @@ export default function Treasury() {
               <thead>
                 <tr className="border-b border-line">
                   <Th>WHEN</Th>
-                  <Th>RECORDED BY</Th>
                   <Th>TYPE</Th>
                   <Th>NATURE</Th>
                   <Th right>AMOUNT</Th>
@@ -276,7 +248,6 @@ export default function Treasury() {
                         {new Date(e.ts).toISOString().replace("T", " ").slice(0, 16)}
                       </span>
                     </Td>
-                    <Td>{d.operators.find((o) => o.id === e.operatorId)?.name ?? e.operatorId}</Td>
                     <Td>
                       <span className={e.type === "deposit" ? "text-up" : "text-down"}>
                         {e.type.toUpperCase()}
@@ -421,15 +392,12 @@ function NatureBanner({
 /* ----------------------------------------------------------------- form */
 
 function CapitalForm({
-  operators,
   currentNature,
   onDone,
 }: {
-  operators: { id: string; name: string }[];
   currentNature: "simulated" | "real" | "mixed" | "none";
   onDone: () => void;
 }) {
-  const [operatorId, setOperatorId] = useState("");
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
   const [nature, setNature] = useState<"simulated" | "real">("simulated");
   const [amount, setAmount] = useState("1000");
@@ -447,7 +415,6 @@ function CapitalForm({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            operatorId: operatorId || operators[0]?.id,
             type,
             nature,
             amountUsd: Number(amount),
@@ -467,36 +434,12 @@ function CapitalForm({
         setBusy(false);
       }
     },
-    [operatorId, operators, type, nature, amount, note, onDone],
+    [type, nature, amount, note, onDone],
   );
 
   return (
     <Panel label="DEPOSIT / WITHDRAW" hint="CHANGES NAV, WHICH CHANGES SIZING">
       <form onSubmit={submit} className="space-y-3">
-        <div>
-          <Micro className="mb-1.5">RECORDED BY</Micro>
-          <div className="flex flex-wrap gap-1">
-            {operators.map((o, i) => {
-              const active = operatorId === o.id || (!operatorId && i === 0);
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => setOperatorId(o.id)}
-                  className={cx(
-                    "micro border px-2 py-1 transition-colors",
-                    active
-                      ? "border-accent/50 bg-accent/10 text-accent"
-                      : "border-line-bright text-dim hover:text-muted",
-                  )}
-                >
-                  {o.name.toUpperCase()}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Micro className="mb-1.5">DIRECTION</Micro>
@@ -573,7 +516,7 @@ function CapitalForm({
 
         <button
           type="submit"
-          disabled={busy || operators.length === 0}
+          disabled={busy}
           className={cx(
             "micro w-full border py-2 transition-colors disabled:opacity-40",
             type === "deposit"
