@@ -1,29 +1,33 @@
 /**
  * Capital ledger — deposits, withdrawals, and the NAV they imply.
  *
- * **NAV is derived, never typed.** It was a number in the config, which meant
- * it could say anything and never moved on its own. That is fine for a
- * placeholder and useless for tracking performance: a NAV you set by hand
- * cannot compound, cannot be wrong in a way you would notice, and quietly
- * decouples from what the book is actually worth.
+ * The fund is wholly owned by Musket Goose. There are no fractional stakes, so
+ * this ledger tracks **one balance**, not a cap table. Each event records which
+ * operator entered it, for audit — that attribution is not a claim on the
+ * money.
  *
- * So:
+ * **NAV is derived, never typed:**
  *
- *     NAV = (deposits − withdrawals) + realised P&L + unrealised P&L
- *           + funding received − fees paid
+ *     NAV = (deposits − withdrawals) + realised + unrealised + funding − fees
  *
- * Every term on the right comes from a recorded event or a replayed fill. If
- * the number moves, something happened, and you can find out what.
+ * Every term comes from a recorded event or a replayed fill, so if the number
+ * moves, something happened and you can find out what. A hand-set NAV cannot
+ * compound and quietly decouples from what the book is worth.
  *
- * **Simulated vs real is a first-class property of every event**, not a global
- * mode. A ledger that mixes them is worse than useless — it produces a track
- * record you cannot defend, and the whole point of paper trading is to build a
- * record you *can* defend before risking anything. Mixed ledgers are reported
- * as mixed and never silently summed into one headline.
+ * **The performance index** is the one piece kept from the unit model. Units
+ * change only when capital moves, so NAV-per-unit isolates trading performance
+ * from deposits — it is a time-weighted return. Without it, adding $5,000 looks
+ * identical to earning $5,000 on the balance alone, which is the single most
+ * misleading thing a fund balance can do.
+ *
+ * **Simulated vs real is a property of each event**, not a global mode, and the
+ * two cannot be mixed. A blended ledger produces a track record where you can
+ * no longer say which returns were earned with money at risk — which is exactly
+ * what paper trading exists to establish.
  */
 
 import { appendLog, readLog } from "@/lib/store/kv";
-import { OPERATORS, type Operator } from "@/lib/fund/operators";
+import { OPERATORS } from "@/lib/fund/operators";
 
 export const CAPITAL_LOG = "capital_events";
 
@@ -32,31 +36,25 @@ export type CapitalNature = "simulated" | "real";
 export type CapitalEvent = {
   id: string;
   ts: number;
+  /** Which operator recorded this. Audit attribution, not ownership. */
   operatorId: string;
   type: "deposit" | "withdrawal";
   /** Always positive; direction comes from `type`. */
   amountUsd: number;
-  /**
-   * Whether this is real money or a hypothetical.
-   *
-   * Per-event rather than a global switch, because the realistic path is a
-   * simulated book that later takes a real deposit — and at that moment the
-   * history must stay honest about which is which.
-   */
   nature: CapitalNature;
-  /** NAV per unit at the time, which is what decides how many units it buys. */
+  /** Index level at the time, which is what the unit maths prices against. */
   navPerUnitAtEvent: number;
-  /** Units issued (deposit) or redeemed (withdrawal). */
+  /** Change in the notional unit count. Drives the performance index only. */
   unitsDelta: number;
   note: string | null;
 };
 
+/** The performance index starts at 1.0000, so it reads directly as a multiple. */
 export const INITIAL_NAV_PER_UNIT = 1;
 
 export async function readCapitalEvents(): Promise<CapitalEvent[]> {
   try {
-    const events = await readLog<CapitalEvent>(CAPITAL_LOG);
-    return events.sort((a, b) => a.ts - b.ts);
+    return (await readLog<CapitalEvent>(CAPITAL_LOG)).sort((a, b) => a.ts - b.ts);
   } catch {
     return [];
   }
@@ -66,6 +64,7 @@ export type LedgerTotals = {
   depositedUsd: number;
   withdrawnUsd: number;
   netContributedUsd: number;
+  /** Notional units. Exists to compute the performance index, nothing else. */
   unitsOutstanding: number;
 };
 
@@ -73,19 +72,14 @@ export type LedgerTotals = {
  * Replay events into totals.
  *
  * Replayed rather than cached, for the same reason positions are: a stored
- * unit count that drifts from its own event log is a dispute nobody can settle.
+ * total that drifts from its own event log is a number nobody can reconcile.
  */
-export function replayLedger(
-  events: CapitalEvent[],
-  nature?: CapitalNature,
-): LedgerTotals {
-  const relevant = nature ? events.filter((e) => e.nature === nature) : events;
-
+export function replayLedger(events: CapitalEvent[]): LedgerTotals {
   let depositedUsd = 0;
   let withdrawnUsd = 0;
   let unitsOutstanding = 0;
 
-  for (const e of relevant) {
+  for (const e of events) {
     if (e.type === "deposit") {
       depositedUsd += e.amountUsd;
       unitsOutstanding += e.unitsDelta;
@@ -121,27 +115,30 @@ export const NO_PNL: TradingPnl = {
 };
 
 export type FundNav = {
-  /** The number everything else sizes against. */
+  /** The balance everything else sizes against. */
   navUsd: number;
   netContributedUsd: number;
+  depositedUsd: number;
+  withdrawnUsd: number;
   pnl: TradingPnl;
+  /**
+   * Time-weighted performance index, starting at 1.0000.
+   *
+   * Moves only on trading P&L — deposits and withdrawals issue or redeem units
+   * at the current level and therefore leave it unchanged. 1.05 means the
+   * strategy is up 5% regardless of how much capital passed through.
+   */
+  performanceIndex: number;
+  /** Index − 1, i.e. cumulative time-weighted return. */
+  twrPct: number;
+  /** Simple return on net capital in. Null when nothing was contributed. */
+  returnOnCapitalPct: number | null;
   unitsOutstanding: number;
-  navPerUnit: number;
-  /** Return on net capital contributed. Null when nothing was contributed. */
-  returnPct: number | null;
   funded: boolean;
-  /** True when the ledger contains both simulated and real events. */
   mixed: boolean;
   nature: CapitalNature | "mixed" | "none";
 };
 
-/**
- * The fund's NAV, derived.
- *
- * `navPerUnit` is what makes contribution timing fair: a deposit made after a
- * profitable month buys fewer units, so it does not dilute the gain that
- * happened before it arrived.
- */
 export function computeNav(events: CapitalEvent[], pnl: TradingPnl = NO_PNL): FundNav {
   const totals = replayLedger(events);
   const navUsd = totals.netContributedUsd + pnl.totalUsd;
@@ -149,51 +146,24 @@ export function computeNav(events: CapitalEvent[], pnl: TradingPnl = NO_PNL): Fu
   const natures = new Set(events.map((e) => e.nature));
   const mixed = natures.size > 1;
 
+  const performanceIndex =
+    totals.unitsOutstanding > 0 ? navUsd / totals.unitsOutstanding : INITIAL_NAV_PER_UNIT;
+
   return {
     navUsd,
     netContributedUsd: totals.netContributedUsd,
+    depositedUsd: totals.depositedUsd,
+    withdrawnUsd: totals.withdrawnUsd,
     pnl,
-    unitsOutstanding: totals.unitsOutstanding,
-    navPerUnit:
-      totals.unitsOutstanding > 0 ? navUsd / totals.unitsOutstanding : INITIAL_NAV_PER_UNIT,
-    returnPct:
+    performanceIndex,
+    twrPct: performanceIndex - 1,
+    returnOnCapitalPct:
       totals.netContributedUsd > 0 ? pnl.totalUsd / totals.netContributedUsd : null,
-    funded: totals.unitsOutstanding > 0,
+    unitsOutstanding: totals.unitsOutstanding,
+    funded: totals.netContributedUsd > 0,
     mixed,
     nature: natures.size === 0 ? "none" : mixed ? "mixed" : [...natures][0],
   };
-}
-
-export type OperatorStake = {
-  operator: Operator;
-  units: number;
-  depositedUsd: number;
-  withdrawnUsd: number;
-  valueUsd: number;
-  pnlUsd: number;
-  share: number;
-};
-
-export function operatorStakes(
-  events: CapitalEvent[],
-  nav: FundNav,
-  operators: Operator[] = OPERATORS,
-): OperatorStake[] {
-  return operators.map((operator) => {
-    const mine = events.filter((e) => e.operatorId === operator.id);
-    const t = replayLedger(mine);
-    const valueUsd = t.unitsOutstanding * nav.navPerUnit;
-
-    return {
-      operator,
-      units: t.unitsOutstanding,
-      depositedUsd: t.depositedUsd,
-      withdrawnUsd: t.withdrawnUsd,
-      valueUsd,
-      pnlUsd: valueUsd - t.netContributedUsd,
-      share: nav.unitsOutstanding > 0 ? t.unitsOutstanding / nav.unitsOutstanding : 0,
-    };
-  });
 }
 
 export type RecordResult =
@@ -203,9 +173,10 @@ export type RecordResult =
 /**
  * Record a deposit or withdrawal.
  *
- * Units are priced at the CURRENT NAV per unit, computed before the event is
- * applied. Pricing after would let a deposit buy units at a price it helped
- * set, which is how contribution timing turns into an unfair split.
+ * Units are priced at the index level computed *before* the event is applied.
+ * Pricing after would let a deposit move the index it was priced against,
+ * which would corrupt the performance series with capital flows — the exact
+ * thing the index exists to exclude.
  */
 export async function recordCapitalEvent(input: {
   operatorId: string;
@@ -227,9 +198,6 @@ export async function recordCapitalEvent(input: {
   const events = await readCapitalEvents();
   const navBefore = computeNav(events, pnl);
 
-  // Mixing real and simulated capital in one pool makes the track record
-  // indefensible — you could no longer say which returns were earned with
-  // money at risk. Refused rather than warned about.
   if (events.length > 0 && navBefore.nature !== "none" && navBefore.nature !== nature) {
     return {
       ok: false,
@@ -240,18 +208,11 @@ export async function recordCapitalEvent(input: {
     };
   }
 
-  const navPerUnit = navBefore.navPerUnit;
-  const unitsDelta = amountUsd / navPerUnit;
-
-  if (type === "withdrawal") {
-    const stakes = operatorStakes(events, navBefore);
-    const mine = stakes.find((s) => s.operator.id === operatorId);
-    if (!mine || unitsDelta > mine.units + 1e-9) {
-      return {
-        ok: false,
-        error: `Withdrawal of $${amountUsd.toFixed(2)} exceeds this operator's holding of $${(mine?.valueUsd ?? 0).toFixed(2)}`,
-      };
-    }
+  if (type === "withdrawal" && amountUsd > navBefore.navUsd + 1e-9) {
+    return {
+      ok: false,
+      error: `Withdrawal of $${amountUsd.toFixed(2)} exceeds the fund balance of $${navBefore.navUsd.toFixed(2)}`,
+    };
   }
 
   const event: CapitalEvent = {
@@ -261,8 +222,8 @@ export async function recordCapitalEvent(input: {
     type,
     amountUsd,
     nature,
-    navPerUnitAtEvent: navPerUnit,
-    unitsDelta,
+    navPerUnitAtEvent: navBefore.performanceIndex,
+    unitsDelta: amountUsd / navBefore.performanceIndex,
     note: note?.trim() || null,
   };
 

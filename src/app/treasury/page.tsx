@@ -7,10 +7,14 @@
  * P&L. That is what makes it compound, and what makes a wrong number
  * noticeable — if it moves, something happened and you can find out what.
  *
- * Deposits and withdrawals are recorded per operator and priced in units at the
- * NAV per unit prevailing at the time, so contribution timing stays fair. A
- * deposit made after a profitable month buys fewer units and does not dilute a
- * gain it did not fund.
+ * The fund is wholly owned by Musket Goose — there are no fractional stakes, so
+ * this screen shows ONE balance rather than a cap table. Operators appear only
+ * as the person who recorded a movement.
+ *
+ * The performance index is the number worth watching. It moves on trading P&L
+ * alone and is unaffected by deposits, so it answers "is the strategy working?"
+ * — which a balance cannot, because adding $5,000 and earning $5,000 look
+ * identical on a balance.
  */
 
 import { useCallback, useState } from "react";
@@ -23,12 +27,15 @@ import { TierLadder } from "@/components/ladder";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 type FundResponse = {
+  fund: { name: string; ownership: string; decisionMaker: string };
   nav: {
     navUsd: number;
     netContributedUsd: number;
-    navPerUnit: number;
-    unitsOutstanding: number;
-    returnPct: number | null;
+    depositedUsd: number;
+    withdrawnUsd: number;
+    performanceIndex: number;
+    twrPct: number;
+    returnOnCapitalPct: number | null;
     funded: boolean;
     nature: "simulated" | "real" | "mixed" | "none";
     mixed: boolean;
@@ -40,18 +47,7 @@ type FundResponse = {
     feesUsd: number;
     totalUsd: number;
   };
-  operators: {
-    id: string;
-    name: string;
-    initials: string;
-    colorVar: string;
-    units: number;
-    depositedUsd: number;
-    withdrawnUsd: number;
-    valueUsd: number;
-    pnlUsd: number;
-    share: number;
-  }[];
+  operators: { id: string; name: string; initials: string; colorVar: string }[];
   events: CapitalEvent[];
   openPositions: number;
   unpriced: string[];
@@ -100,22 +96,31 @@ export default function Treasury() {
           </Stat>
         </Panel>
         <Panel>
-          <Stat label="RETURN" sub={<span className="text-dim">on capital in</span>}>
-            {nav?.returnPct === null || nav?.returnPct === undefined ? (
-              <span className="text-[19px] text-dim">—</span>
-            ) : (
-              <span
-                className={cx("tnum text-[19px]", nav.returnPct >= 0 ? "text-up" : "text-down")}
-              >
-                {nav.returnPct >= 0 ? "+" : ""}
-                {(nav.returnPct * 100).toFixed(2)}%
-              </span>
-            )}
+          <Stat
+            label="PERFORMANCE INDEX"
+            sub={<span className="text-dim">1.0000 at inception</span>}
+          >
+            <span
+              className={cx(
+                "tnum text-[19px]",
+                (nav?.performanceIndex ?? 1) >= 1 ? "text-up" : "text-down",
+              )}
+            >
+              {(nav?.performanceIndex ?? 1).toFixed(6)}
+            </span>
           </Stat>
         </Panel>
         <Panel>
-          <Stat label="NAV / UNIT" sub={<span className="text-dim">unit price</span>}>
-            <span className="tnum text-[19px]">{(nav?.navPerUnit ?? 1).toFixed(4)}</span>
+          <Stat
+            label="RETURN (TWR)"
+            sub={<span className="text-dim">strategy only, ignores deposits</span>}
+          >
+            <span
+              className={cx("tnum text-[19px]", (nav?.twrPct ?? 0) >= 0 ? "text-up" : "text-down")}
+            >
+              {(nav?.twrPct ?? 0) >= 0 ? "+" : ""}
+              {((nav?.twrPct ?? 0) * 100).toFixed(4)}%
+            </span>
           </Stat>
         </Panel>
         <Panel>
@@ -126,76 +131,64 @@ export default function Treasury() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.15fr_1fr]">
-        <Panel label="OPERATORS" hint="UNIT-ACCOUNTED OWNERSHIP" flush>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-line">
-                  <Th>OPERATOR</Th>
-                  <Th right>UNITS</Th>
-                  <Th right>SHARE</Th>
-                  <Th right>IN</Th>
-                  <Th right>OUT</Th>
-                  <Th right>VALUE</Th>
-                  <Th right>P&amp;L</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {(d?.operators ?? []).map((p) => (
-                  <tr key={p.id} className="border-b border-line/60">
-                    <Td>
-                      <span className="flex items-center gap-2.5">
-                        <span
-                          className="flex size-6 shrink-0 items-center justify-center border text-[10px]"
-                          style={{
-                            borderColor: `color-mix(in oklab, var(${p.colorVar}) 45%, transparent)`,
-                            color: `var(${p.colorVar})`,
-                          }}
-                        >
-                          {p.initials}
-                        </span>
-                        <span className="text-ink">{p.name}</span>
-                      </span>
-                    </Td>
-                    <Td right>
-                      <span className="tnum">{p.units.toFixed(2)}</span>
-                    </Td>
-                    <Td right>
-                      <span className="tnum">{(p.share * 100).toFixed(1)}%</span>
-                    </Td>
-                    <Td right>
-                      <Money usd={p.depositedUsd} dp={0} />
-                    </Td>
-                    <Td right>
-                      <span className="text-dim">
-                        <Money usd={p.withdrawnUsd} dp={0} />
-                      </span>
-                    </Td>
-                    <Td right>
-                      <span className="text-ink">
-                        <Money usd={p.valueUsd} />
-                      </span>
-                    </Td>
-                    <Td right>
-                      <span
-                        className={cx(
-                          p.pnlUsd > 0 ? "text-up" : p.pnlUsd < 0 ? "text-down" : "text-muted",
-                        )}
-                      >
-                        <Money usd={p.pnlUsd} sign />
-                      </span>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <Panel label="FUND" hint="WHOLLY OWNED — NO FRACTIONAL STAKES">
+          <dl className="space-y-2.5 text-[12px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-dim">Owner</dt>
+              <dd className="text-ink">{d?.fund.name ?? "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-dim">Ownership</dt>
+              <dd className="text-muted">{d?.fund.ownership ?? "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-dim">Decisions</dt>
+              <dd className="max-w-[60%] text-right text-muted">
+                {d?.fund.decisionMaker ?? "—"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-dim">Deposited</dt>
+              <dd className="text-muted">
+                <Money usd={nav?.depositedUsd ?? 0} />
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-dim">Withdrawn</dt>
+              <dd className="text-muted">
+                <Money usd={nav?.withdrawnUsd ?? 0} />
+              </dd>
+            </div>
+          </dl>
+
+          <div className="mt-4 border-t border-line pt-3">
+            <Micro className="mb-2">OPERATORS</Micro>
+            <div className="flex flex-wrap gap-2">
+              {(d?.operators ?? []).map((o) => (
+                <span
+                  key={o.id}
+                  className="flex items-center gap-2 border border-line-bright px-2 py-1"
+                  title={o.name}
+                >
+                  <span
+                    className="flex size-5 items-center justify-center border text-[9px]"
+                    style={{
+                      borderColor: `color-mix(in oklab, var(${o.colorVar}) 45%, transparent)`,
+                      color: `var(${o.colorVar})`,
+                    }}
+                  >
+                    {o.initials}
+                  </span>
+                  <span className="text-[11.5px] text-muted">{o.name}</span>
+                </span>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-dim">
+              Operators can move capital, halt trading and change configuration.
+              Every action is attributed to one of them in the audit trail — that
+              attribution records who acted, not who owns anything.
+            </p>
           </div>
-          <p className="px-3 py-2.5 text-[11px] leading-relaxed text-dim">
-            Each deposit buys units at the NAV per unit prevailing at that
-            moment. That keeps ownership correct regardless of timing — a
-            deposit after a good month buys fewer units and does not dilute the
-            gain it did not fund.
-          </p>
         </Panel>
 
         <CapitalForm
@@ -267,12 +260,11 @@ export default function Treasury() {
               <thead>
                 <tr className="border-b border-line">
                   <Th>WHEN</Th>
-                  <Th>OPERATOR</Th>
+                  <Th>RECORDED BY</Th>
                   <Th>TYPE</Th>
                   <Th>NATURE</Th>
                   <Th right>AMOUNT</Th>
-                  <Th right>NAV/UNIT</Th>
-                  <Th right>UNITS</Th>
+                  <Th right>INDEX AT EVENT</Th>
                   <Th>NOTE</Th>
                 </tr>
               </thead>
@@ -301,10 +293,7 @@ export default function Treasury() {
                       <Money usd={e.amountUsd} />
                     </Td>
                     <Td right>
-                      <span className="tnum text-dim">{e.navPerUnitAtEvent.toFixed(4)}</span>
-                    </Td>
-                    <Td right>
-                      <span className="tnum">{e.unitsDelta.toFixed(2)}</span>
+                      <span className="tnum text-dim">{e.navPerUnitAtEvent.toFixed(6)}</span>
                     </Td>
                     <Td>
                       <span className="text-dim">{e.note ?? "—"}</span>
@@ -485,7 +474,7 @@ function CapitalForm({
     <Panel label="DEPOSIT / WITHDRAW" hint="CHANGES NAV, WHICH CHANGES SIZING">
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <Micro className="mb-1.5">OPERATOR</Micro>
+          <Micro className="mb-1.5">RECORDED BY</Micro>
           <div className="flex flex-wrap gap-1">
             {operators.map((o, i) => {
               const active = operatorId === o.id || (!operatorId && i === 0);
@@ -599,10 +588,11 @@ function CapitalForm({
       </form>
 
       <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-        Real and simulated capital cannot be mixed in one ledger — the option
-        locks once the first event sets the nature. A mixed book produces a track
-        record where you can no longer say which returns were earned with money
-        at risk.
+        The fund is wholly owned, so a deposit adds to one balance — it does not
+        buy a stake. Real and simulated capital cannot be mixed: the option locks
+        once the first event sets the nature, because a blended book produces a
+        track record where you can no longer say which returns were earned with
+        money at risk.
       </p>
     </Panel>
   );

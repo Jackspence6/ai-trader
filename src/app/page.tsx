@@ -23,26 +23,17 @@ import { TierLadder } from "@/components/ladder";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 type FundResponse = {
+  fund: { name: string; ownership: string; decisionMaker: string };
   nav: {
     navUsd: number;
     netContributedUsd: number;
-    navPerUnit: number;
-    unitsOutstanding: number;
-    returnPct: number | null;
+    performanceIndex: number;
+    twrPct: number;
     funded: boolean;
     nature: "simulated" | "real" | "mixed" | "none";
   };
   pnl: { totalUsd: number; realisedUsd: number; unrealisedUsd: number };
-  operators: {
-    id: string;
-    name: string;
-    initials: string;
-    colorVar: string;
-    units: number;
-    depositedUsd: number;
-    valueUsd: number;
-    share: number;
-  }[];
+  operators: { id: string; name: string; initials: string; colorVar: string }[];
   events: CapitalEvent[];
 };
 
@@ -85,9 +76,10 @@ export default function CommandCenter() {
           hint="POOLED FUND · UNIT ACCOUNTED"
           right={
             <div className="flex items-center gap-1.5">
-              <Tag>{(fund?.nav.unitsOutstanding ?? 0).toFixed(2)} UNITS</Tag>
-              <Tag tone={fund?.nav.funded ? "accent" : "neutral"}>
-                NAV/UNIT {(fund?.nav.navPerUnit ?? 1).toFixed(4)}
+              <Tag>{fund?.fund.name ?? "—"}</Tag>
+              <Tag tone={(fund?.nav.twrPct ?? 0) >= 0 ? "up" : "down"}>
+                TWR {(fund?.nav.twrPct ?? 0) >= 0 ? "+" : ""}
+                {((fund?.nav.twrPct ?? 0) * 100).toFixed(3)}%
               </Tag>
             </div>
           }
@@ -136,40 +128,48 @@ export default function CommandCenter() {
         </Panel>
 
         <div className="space-y-3">
-          <Panel label="OPERATORS" hint="UNIT-ACCOUNTED OWNERSHIP">
-            <ul className="space-y-3">
-              {(fund?.operators ?? []).map((p) => (
-                <li key={p.id} className="flex items-center gap-3">
+          <Panel label="FUND" hint="WHOLLY OWNED · SYSTEMATIC">
+            <dl className="space-y-2.5 text-[12px]">
+              <div className="flex justify-between gap-3">
+                <dt className="text-dim">Owner</dt>
+                <dd className="text-ink">{fund?.fund.name ?? "—"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-dim">Performance index</dt>
+                <dd className="tnum text-muted">
+                  {(fund?.nav.performanceIndex ?? 1).toFixed(6)}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-dim">Decisions</dt>
+                <dd className="max-w-[60%] text-right text-muted">
+                  {fund?.fund.decisionMaker ?? "—"}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-3 border-t border-line pt-3">
+              <Micro className="mb-2">OPERATORS</Micro>
+              <div className="flex flex-wrap gap-1.5">
+                {(fund?.operators ?? []).map((o) => (
                   <span
-                    className="flex size-7 shrink-0 items-center justify-center border text-[10px]"
+                    key={o.id}
+                    title={o.name}
+                    className="flex size-6 items-center justify-center border text-[9px]"
                     style={{
-                      borderColor: `color-mix(in oklab, var(${p.colorVar}) 45%, transparent)`,
-                      color: `var(${p.colorVar})`,
+                      borderColor: `color-mix(in oklab, var(${o.colorVar}) 45%, transparent)`,
+                      color: `var(${o.colorVar})`,
                     }}
                   >
-                    {p.initials}
+                    {o.initials}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] text-ink">{p.name}</div>
-                    <div className="micro text-dim">
-                      {p.units.toFixed(2)} units · {(p.share * 100).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-[12.5px] text-muted">
-                      <Money usd={p.valueUsd} />
-                    </div>
-                    <div className="micro text-dim">
-                      in <Money usd={p.depositedUsd} dp={0} />
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-              Contributions buy units at the prevailing NAV per unit, so ownership
-              stays correct regardless of when each operator adds capital.
-            </p>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11px] leading-relaxed text-dim">
+                Attribution for the audit trail. No one holds a portion — the
+                fund is wholly owned and traded by rules, not by a person.
+              </p>
+            </div>
           </Panel>
 
           <Panel label="VENUE HEALTH" hint="PUBLIC MARKET FEEDS">

@@ -221,8 +221,9 @@ This is the treasury layer: what we hold, where it sits, who it belongs to, and 
 ### Object model
 
 ```
-Operator ─┬─ owns units of ─→ Fund (the pooled NAV)
-          └─ Contribution / Withdrawal events
+Musket Goose ──── wholly owns ───→ Fund (one NAV, no fractional stakes)
+                                     ▲
+Operator ─── records / acts on ──────┘   (audit attribution only)
 
 Fund ─┬─ Venue Account ─┬─ API Credential (encrypted, trade-only)
       │  (exchange +    ├─ Balances (per asset, free/locked)
@@ -233,17 +234,17 @@ Fund ─┬─ Venue Account ─┬─ API Credential (encrypted, trade-only)
 
 A **Venue Account** is one API credential on one exchange (or subaccount — Binance, Bybit, and OKX all support subaccounts, and using one subaccount per strategy is the cleanest way to get true per-strategy attribution and blast-radius isolation).
 
-### Unit accounting — the important decision
+### Ownership — superseded
 
-With three operators contributing different amounts at different times, raw PnL becomes meaningless very fast. If one operator adds $5k right before a good week, naive percentage returns credit everyone equally and the split is wrong.
+> **Corrected 2026-07-21.** This section originally described several operators each holding units of a pooled NAV, with per-person stakes. That is not the structure. **The fund is wholly owned by Musket Goose.** There are no fractional stakes, and the people below are *operators* — they act on the system, they do not own portions of it. Trading decisions come from rules and models, not from any of them.
+>
+> A per-person ownership table would imply a claim that does not exist, so it was removed rather than left to be misread.
 
-So the fund is accounted **like a real fund, in units**. Each contribution buys units at the current NAV-per-unit; each withdrawal redeems them. Every operator's stake is `units_held × current_NAV_per_unit`. This gives us for free:
+What survives from the unit model, repurposed, is the **performance index**.
 
-- Correct, dispute-proof ownership splits regardless of contribution timing
-- **Time-weighted return** (strategy performance, unaffected by deposits) and **money-weighted return** (each operator's actual experience) as separate, both-correct numbers
-- A clean audit trail if anyone ever wants out
+Units change only when capital moves, so NAV-per-unit is unaffected by deposits and withdrawals — it moves on trading P&L alone. That makes it a time-weighted return, and it answers the one question a balance cannot: *is the strategy working?* On a raw balance, adding $5,000 and earning $5,000 look identical. The index separates them.
 
-This is a small amount of code now and impossible to retrofit accurately later, so it goes in from the start even though we're the only user today.
+So the ledger tracks one balance, priced against an index that starts at 1.0000. Each capital event records which operator entered it, **for audit** — that attribution says who acted, not who owns anything.
 
 ### Automated sync
 

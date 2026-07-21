@@ -9,42 +9,36 @@
  * would inherit the mistake.
  */
 
-import {
-  operatorStakes,
-  recordCapitalEvent,
-  resetLedger,
-  type CapitalNature,
-} from "@/lib/fund/ledger";
+import { recordCapitalEvent, resetLedger, type CapitalNature } from "@/lib/fund/ledger";
 import { getFundState, tradingPnl } from "@/lib/fund/nav";
-import { OPERATORS } from "@/lib/fund/operators";
+import { FUND, OPERATORS } from "@/lib/fund/operators";
 
 export async function GET() {
   const state = await getFundState();
 
   return Response.json(
     {
+      fund: FUND,
       nav: {
         navUsd: state.navUsd,
         netContributedUsd: state.netContributedUsd,
-        navPerUnit: state.navPerUnit,
-        unitsOutstanding: state.unitsOutstanding,
-        returnPct: state.returnPct,
+        depositedUsd: state.depositedUsd,
+        withdrawnUsd: state.withdrawnUsd,
+        performanceIndex: state.performanceIndex,
+        twrPct: state.twrPct,
+        returnOnCapitalPct: state.returnOnCapitalPct,
         funded: state.funded,
         nature: state.nature,
         mixed: state.mixed,
       },
       pnl: state.pnl,
-      operators: operatorStakes(state.events, state).map((s) => ({
-        id: s.operator.id,
-        name: s.operator.name,
-        initials: s.operator.initials,
-        colorVar: s.operator.colorVar,
-        units: s.units,
-        depositedUsd: s.depositedUsd,
-        withdrawnUsd: s.withdrawnUsd,
-        valueUsd: s.valueUsd,
-        pnlUsd: s.pnlUsd,
-        share: s.share,
+      // Operators are listed so actions can be attributed, not so capital can
+      // be divided. There are no stakes.
+      operators: OPERATORS.map((o) => ({
+        id: o.id,
+        name: o.name,
+        initials: o.initials,
+        colorVar: o.colorVar,
       })),
       // Newest first — the ledger is read as "what happened lately".
       events: [...state.events].reverse(),
