@@ -23,7 +23,7 @@
 
 import { evaluateGate, type GateInput, type RejectionCode } from "@/lib/calc/gate";
 import { resolveTier, type Tier } from "@/lib/calc/tiers";
-import { DEFAULT_VENUE_FEES } from "@/lib/calc/costs";
+import { bindingMinNotional } from "@/lib/calc/costs";
 import { computePortfolio, sleeveForStrategy } from "@/lib/portfolio/sleeves";
 import {
   buildPositions,
@@ -202,7 +202,12 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
       netEdgeBps: opp.netBps,
       minNetEdgeBps: config.minNetEdgeBps,
       intendedNotionalUsd: notionalUsd,
-      venueMinNotionalUsd: DEFAULT_VENUE_FEES.binance.minNotionalUsd,
+      // A carry needs BOTH legs to clear their own minimum; on Binance the
+      // perp leg at $50 binds, not the $5 spot minimum.
+      venueMinNotionalUsd: bindingMinNotional([
+        { venue: opp.route.split(" ")[0], market: "spot" },
+        { venue: opp.route.split(" ")[0], market: "perp" },
+      ]),
       minNotionalDragBps: opp.dragBps,
       breakevenDays: opp.breakevenDays ?? Infinity,
       expectedHoldDays: config.expectedHoldDays,

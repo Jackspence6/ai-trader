@@ -28,8 +28,20 @@ export type VenueFees = {
   venue: string;
   spot: FeeSchedule;
   perp: FeeSchedule;
-  /** Smallest order the venue will accept, in USD notional. */
-  minNotionalUsd: number;
+  /**
+   * Smallest order the venue will accept, in USD notional.
+   *
+   * A CONSERVATIVE per-market default, not the truth. The real minimum is
+   * per-symbol and can differ by an order of magnitude: on Binance futures BTC
+   * is $50, ETH is $20 and DOGE is $5, while Binance spot BTC is $5.
+   *
+   * These defaults are the worst case we have observed, so an edge that clears
+   * them clears the real thing too. Where live rules are available
+   * (`oms/venues/symbols.ts`) they override this — but the fallback must never
+   * be optimistic, because an understated minimum makes an unviable trade look
+   * viable and hides the drag that actually kills it.
+   */
+  minNotionalUsd: { spot: number; perp: number };
   /** Typical withdrawal cost in USD for the cheapest stablecoin route. */
   cheapestTransferUsd: number;
 };
@@ -48,26 +60,57 @@ export const DEFAULT_VENUE_FEES: Record<string, VenueFees> = {
     venue: "Binance",
     spot: { makerBps: 10, takerBps: 10 },
     perp: { makerBps: 2, takerBps: 5 },
-    minNotionalUsd: 5,
+    // BTC perp is $50 on both mainnet and testnet, verified against
+    // /fapi/v1/exchangeInfo. Spot BTC is $5.
+    minNotionalUsd: { spot: 5, perp: 50 },
     cheapestTransferUsd: 1.0,
   },
   bybit: {
     venue: "Bybit",
     spot: { makerBps: 10, takerBps: 10 },
     perp: { makerBps: 2, takerBps: 5.5 },
-    minNotionalUsd: 5,
+    minNotionalUsd: { spot: 5, perp: 5 },
     cheapestTransferUsd: 0.5,
   },
   hyperliquid: {
     venue: "Hyperliquid",
     spot: { makerBps: 4, takerBps: 7 },
     perp: { makerBps: 1.5, takerBps: 4.5 },
-    minNotionalUsd: 10,
+    minNotionalUsd: { spot: 10, perp: 10 },
     cheapestTransferUsd: 1.0,
   },
 };
 
 export type Liquidity = "taker" | "maker";
+
+/**
+ * The venue's minimum notional for a given market.
+ *
+ * Conservative by construction — see the note on `minNotionalUsd`.
+ */
+export function minNotionalFor(fees: VenueFees, market: "spot" | "perp"): number {
+  return market === "spot" ? fees.minNotionalUsd.spot : fees.minNotionalUsd.perp;
+}
+
+/**
+ * The binding minimum across every leg of a multi-leg trade.
+ *
+ * A funding carry is only viable if BOTH legs clear their own minimum, so the
+ * constraint is the largest of them. Using the smaller — or a single
+ * venue-level figure — makes a trade look viable when one leg would be
+ * rejected, and a half-filled carry is a naked position.
+ */
+export function bindingMinNotional(
+  legs: { venue: string; market: "spot" | "perp" }[],
+  feeTable: Record<string, VenueFees> = DEFAULT_VENUE_FEES,
+): number {
+  let worst = 0;
+  for (const leg of legs) {
+    const fees = feeTable[leg.venue.toLowerCase()] ?? worstCaseFees(feeTable);
+    worst = Math.max(worst, minNotionalFor(fees, leg.market));
+  }
+  return worst;
+}
 
 /** Fee in bps for one leg on one venue. */
 export function legFeeBps(

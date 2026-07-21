@@ -25,8 +25,10 @@ import {
   zscore,
 } from "./indicators";
 import {
+  bindingMinNotional,
   DEFAULT_VENUE_FEES,
   executionCost,
+  minNotionalFor,
   halfSpreadBps,
   legFeeBps,
   minNotionalDragBps,
@@ -227,6 +229,38 @@ describe("cost model", () => {
       },
     ];
     expect(roundTripCost(legs).totalUsd).toBeCloseTo(executionCost(legs).totalUsd * 2, 10);
+  });
+
+  it("knows perp minimums differ from spot, and by a lot", () => {
+    // Verified against Binance's own exchangeInfo on mainnet AND testnet:
+    // BTC perp is $50, BTC spot is $5. Assuming one flat venue minimum
+    // understates drag and makes unviable trades look viable.
+    const b = DEFAULT_VENUE_FEES.binance;
+    expect(minNotionalFor(b, "spot")).toBe(5);
+    expect(minNotionalFor(b, "perp")).toBe(50);
+  });
+
+  it("takes the LARGEST minimum across a multi-leg trade", () => {
+    // A carry only works if both legs fill. Sizing to the smaller minimum
+    // leaves one leg rejected, and a half-filled carry is a naked position.
+    const carry = bindingMinNotional([
+      { venue: "binance", market: "spot" },
+      { venue: "binance", market: "perp" },
+    ]);
+    expect(carry).toBe(50);
+  });
+
+  it("takes the largest across venues too, for a cross-venue spread", () => {
+    const spread = bindingMinNotional([
+      { venue: "bybit", market: "perp" },
+      { venue: "hyperliquid", market: "perp" },
+    ]);
+    expect(spread).toBe(10);
+  });
+
+  it("falls back to the worst known venue for an unknown one", () => {
+    const unknown = bindingMinNotional([{ venue: "never-heard-of-it", market: "perp" }]);
+    expect(unknown).toBeGreaterThan(0);
   });
 
   it("min-notional drag is zero once intended size clears the minimum", () => {

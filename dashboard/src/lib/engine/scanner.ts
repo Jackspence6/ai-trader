@@ -14,6 +14,7 @@
  */
 
 import {
+  bindingMinNotional,
   DEFAULT_VENUE_FEES,
   minNotionalDragBps,
   roundTripCost,
@@ -250,8 +251,15 @@ function scanCarry(
       expectedHoldDays: config.expectedHoldDays,
     });
 
-    const venueFees = DEFAULT_VENUE_FEES[venue.toLowerCase()];
-    const minNotional = venueFees?.minNotionalUsd ?? 10;
+    // Both legs must clear their own minimum, so the constraint is the larger.
+    // On Binance that is the perp leg at $50, not the $5 spot minimum.
+    const minNotional = bindingMinNotional(
+      [
+        { venue, market: "spot" },
+        { venue, market: "perp" },
+      ],
+      DEFAULT_VENUE_FEES,
+    );
     const dragBps = minNotionalDragBps(notionalUsd, minNotional, cost.totalBps);
 
     // Gross funding earned over the hold, expressed in bps of leg notional.
@@ -384,9 +392,12 @@ function scanFundingSpread(
     expectedHoldDays: config.expectedHoldDays,
   });
 
-  const minNotional = Math.max(
-    DEFAULT_VENUE_FEES[short.venue.toLowerCase()]?.minNotionalUsd ?? 10,
-    DEFAULT_VENUE_FEES[long.venue.toLowerCase()]?.minNotionalUsd ?? 10,
+  const minNotional = bindingMinNotional(
+    [
+      { venue: short.venue, market: "perp" },
+      { venue: long.venue, market: "perp" },
+    ],
+    DEFAULT_VENUE_FEES,
   );
   const dragBps = minNotionalDragBps(notionalUsd, minNotional, cost.totalBps);
 

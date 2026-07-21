@@ -30,6 +30,7 @@
 import {
   DEFAULT_VENUE_FEES,
   legFeeBps,
+  minNotionalFor,
   slippageBps,
   BPS,
   type VenueFees,
@@ -111,10 +112,11 @@ export class SimulatedVenue implements Venue {
         v.spot.takerBps > worst.spot.takerBps ? v : worst,
       );
 
-    if (notionalUsd < resolvedFees.minNotionalUsd) {
+    const minNotional = minNotionalFor(resolvedFees, intent.market);
+    if (notionalUsd < minNotional) {
       return {
         ok: false,
-        reason: `Notional $${notionalUsd.toFixed(2)} below venue minimum $${resolvedFees.minNotionalUsd}`,
+        reason: `Notional $${notionalUsd.toFixed(2)} below venue minimum $${minNotional}`,
       };
     }
 

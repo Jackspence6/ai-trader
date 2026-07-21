@@ -191,7 +191,7 @@ export default function Treasury() {
                 <Th>VENUE</Th>
                 <Th right>SPOT MAKER/TAKER</Th>
                 <Th right>PERP MAKER/TAKER</Th>
-                <Th right>MIN NOTIONAL</Th>
+                <Th right>MIN NOTIONAL (SPOT/PERP)</Th>
                 <Th right>STATUS</Th>
               </tr>
             </thead>
@@ -212,7 +212,9 @@ export default function Treasury() {
                     </span>
                   </Td>
                   <Td right>
-                    <span className="tnum">${v.minNotionalUsd}</span>
+                    <span className="tnum">
+                      ${v.minNotionalUsd.spot} / ${v.minNotionalUsd.perp}
+                    </span>
                   </Td>
                   <Td right>
                     <span className="micro text-dim">FEED ONLY</span>
