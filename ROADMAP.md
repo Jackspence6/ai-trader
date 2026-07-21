@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-21 · ~11,900 lines, 128 tests, 6 commits
+**Status:** 2026-07-21 · ~13,600 lines, 161 tests, 7 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -57,15 +57,15 @@ Without this the platform cannot trade at all. This is the biggest single block 
 | # | Item | Why it matters | Est. |
 |---|---|---|---|
 | ~~A1~~ | ~~**Persistent store**~~ — **DONE.** TimescaleDB in Docker Compose, migration runner with checksums, idempotent JSONL importer, NAV history unfreezing the tier ladder. Optional by design: nothing in the live path blocks on it. | Positions, fills and PnL need real storage, and NAV history is a precondition for tier promotion. | ✅ |
-| A2 | **Encrypted credential vault** — libsodium sealed boxes, master key in OS keychain | The gate between "reads public data" and "can act". Must hard-block any key with withdrawal permission. | 2d |
-| A3 | **Venue adapters, authenticated** — balances, positions, orders, user-data streams | Per-venue quirks: tick/lot size, min notional, post-only rejects, Hyperliquid's volume-based rate budget. | 4–5d |
+| ~~A2~~ | ~~**Encrypted credential vault**~~ — **DONE.** AES-256-GCM + scrypt, secrets write-only, withdrawal permission hard-blocked with no override. | The gate between "reads public data" and "can act". | ✅ |
+| A3 | **Venue adapters, authenticated** — *read-only half DONE* (Binance + Bybit permissions and balances, signing verified against published vectors). Orders, positions and user-data streams remain. | Per-venue quirks: tick/lot size, min notional, post-only rejects, Hyperliquid's volume-based rate budget. | 3d |
 | A4 | **OMS / order lifecycle** — submit, amend, cancel, reconcile against venue truth | The exchange is always the source of truth. Our state drifting from theirs is a halt-worthy event. | 4–5d |
 | A5 | **Position & PnL accounting** — realised/unrealised, fee and funding ledger, per-sleeve and per-strategy attribution | Sleeve isolation is currently theoretical: the limits exist, but nothing measures a sleeve's drawdown to trip them. | 3–4d |
 | A6 | **Continuous reconciliation** — computed vs venue-reported balances | Mismatch beyond tolerance halts trading. Without it we can be wrong for days without knowing. | 2d |
 | A7 | **Kill switch, for real** — cancel-all across venues, optional flatten, plus exchange-side dead-man timers | Today the HALT button flips a config flag. It must cancel resting orders venue-side and register auto-cancel-on-disconnect. | 2d |
 | ~~A8~~ | ~~**Market-data recorder**~~ — **DONE.** Quotes, funding and scan decisions to append-only JSONL, gzipped daily, PID-based liveness. Runs standalone via `pnpm record`. | Every day this is not running is training data we can never recover. Shipped first for exactly that reason. | ✅ |
 
-**Phase A remaining: ~17–20 days** (A1, A8 done). At the end of it the system can trade — badly, with one strategy, unproven.
+**Phase A remaining: ~13–16 days** (A1, A2, A8 done; A3 half done). At the end of it the system can trade — badly, with one strategy, unproven.
 
 ### Phase B · Proving the edge
 
@@ -165,7 +165,7 @@ In order, and the first item is not optional:
 
 1. ~~**A8 — the market-data recorder.**~~ **Done and running.** Recording quotes, funding and scan decisions.
 2. ~~**A1 — Postgres/Timescale.**~~ **Done.** Schema, migrations and an idempotent importer; the tier ladder now reads real NAV history.
-3. **A2 + A3 — credentials and authenticated adapters**, read-only first. Balances visible in the dashboard before anything can trade.
+3. ~~**A2 + A3 — credentials and authenticated adapters**, read-only first.~~ **Done.** Vault enforces trade-only keys; balances are live once a key is added.
 4. **A7 — the real kill switch**, before the first order path exists. The ability to stop must predate the ability to start.
 5. **A4 + A5 — OMS and accounting.** Then, and only then, C1.
 

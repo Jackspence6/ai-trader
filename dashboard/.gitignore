@@ -50,3 +50,6 @@ dev.log
 recorder.log
 
 # database volume is managed by docker compose
+
+# credential vault (encrypted, but never commit it)
+.data/credentials.json

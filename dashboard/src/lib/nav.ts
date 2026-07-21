@@ -73,6 +73,12 @@ export const NAV: NavGroup[] = [
         hint: "Divide capital into sleeves — separate mandates, separate risk limits",
       },
       {
+        key: "exchanges",
+        label: "Exchanges",
+        href: "/exchanges",
+        hint: "API credentials and real account balances — trade-only keys enforced",
+      },
+      {
         key: "control",
         label: "Control",
         href: "/control",
