@@ -56,3 +56,6 @@ recorder.log
 
 # kill-switch server log
 halt-server.log
+
+# paper trading book
+.data/paper/

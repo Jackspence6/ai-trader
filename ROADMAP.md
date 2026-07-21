@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-21 · ~15,200 lines, 178 tests, 8 commits
+**Status:** 2026-07-21 · ~17,800 lines, 240 tests, 9 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -59,24 +59,24 @@ Without this the platform cannot trade at all. This is the biggest single block 
 | ~~A1~~ | ~~**Persistent store**~~ — **DONE.** TimescaleDB in Docker Compose, migration runner with checksums, idempotent JSONL importer, NAV history unfreezing the tier ladder. Optional by design: nothing in the live path blocks on it. | Positions, fills and PnL need real storage, and NAV history is a precondition for tier promotion. | ✅ |
 | ~~A2~~ | ~~**Encrypted credential vault**~~ — **DONE.** AES-256-GCM + scrypt, secrets write-only, withdrawal permission hard-blocked with no override. | The gate between "reads public data" and "can act". | ✅ |
 | A3 | **Venue adapters, authenticated** — *read-only half DONE* (Binance + Bybit permissions and balances, signing verified against published vectors). Orders, positions and user-data streams remain. | Per-venue quirks: tick/lot size, min notional, post-only rejects, Hyperliquid's volume-based rate budget. | 3d |
-| A4 | **OMS / order lifecycle** — submit, amend, cancel, reconcile against venue truth | The exchange is always the source of truth. Our state drifting from theirs is a halt-worthy event. | 4–5d |
-| A5 | **Position & PnL accounting** — realised/unrealised, fee and funding ledger, per-sleeve and per-strategy attribution | Sleeve isolation is currently theoretical: the limits exist, but nothing measures a sleeve's drawdown to trip them. | 3–4d |
+| A4 | **OMS / order lifecycle** — *simulated half DONE* (venue interface, pessimistic paper venue, intents → gate → orders → fills, multi-leg with unwind-on-partial). Live venue adapters and venue-truth reconciliation remain. | The exchange is always the source of truth. Our state drifting from theirs is a halt-worthy event. | 3d |
+| ~~A5~~ | ~~**Position & PnL accounting**~~ — **DONE.** Positions derived by replaying fills, realised/unrealised/funding/fees, per-sleeve attribution, delta-by-underlying. | Sleeve isolation was theoretical until this existed. | ✅ |
 | A6 | **Continuous reconciliation** — computed vs venue-reported balances | Mismatch beyond tolerance halts trading. Without it we can be wrong for days without knowing. | 2d |
 | ~~A7~~ | ~~**Kill switch, for real**~~ — **DONE.** Halt state in its own fail-safe file, venue cancel-all, exchange dead-man timers, three independent access paths. Verified halting with the dashboard killed. | The ability to stop must predate the ability to start. | ✅ |
 | ~~A8~~ | ~~**Market-data recorder**~~ — **DONE.** Quotes, funding and scan decisions to append-only JSONL, gzipped daily, PID-based liveness. Runs standalone via `pnpm record`. | Every day this is not running is training data we can never recover. Shipped first for exactly that reason. | ✅ |
 
-**Phase A remaining: ~11–14 days** (A1, A2, A7, A8 done; A3 half done). At the end of it the system can trade — badly, with one strategy, unproven.
+**Phase A remaining: ~8–10 days** (A1, A2, A5, A7, A8 done; A3 and A4 half done). At the end of it the system can trade — badly, with one strategy, unproven.
 
 ### Phase B · Proving the edge
 
 | # | Item | Why it matters | Est. |
 |---|---|---|---|
 | B1 | **Backtester** — replay with queue position, real L2 slippage, latency, partial fills, funding on schedule, survivorship | A backtester that lies is worse than none; it manufactures confidence. Fill realism must be tunable optimistic→pessimistic. | 5–6d |
-| B2 | **Paper trading** — identical code, live data, simulated fills | Mandatory gate before any strategy sees capital. | 2d |
-| B3 | **Predicted vs realised edge tracking** | The key diagnostic. Divergence means the cost model is wrong, and everything downstream of it is too. | 2d |
+| ~~B2~~ | ~~**Paper trading**~~ — **DONE.** Same gate as live, live market data, pessimistic simulated fills. | Mandatory gate before any strategy sees capital. | ✅ |
+| ~~B3~~ | ~~**Predicted vs realised edge tracking**~~ — **DONE.** Predicted entry cost vs realised entry cost, like for like, per strategy. | The key diagnostic. Divergence means the cost model is wrong, and everything downstream of it is too. | ✅ |
 | B4 | **Parameter sweeps + walk-forward** with sensitivity heatmaps | A strategy that only works at one exact parameter value is overfit. | 3d |
 
-**Phase B total: ~12–13 days.**
+**Phase B remaining: ~8–9 days** (B2, B3 done).
 
 ### Phase C · The strategies themselves
 
@@ -167,6 +167,6 @@ In order, and the first item is not optional:
 2. ~~**A1 — Postgres/Timescale.**~~ **Done.** Schema, migrations and an idempotent importer; the tier ladder now reads real NAV history.
 3. ~~**A2 + A3 — credentials and authenticated adapters**, read-only first.~~ **Done.** Vault enforces trade-only keys; balances are live once a key is added.
 4. ~~**A7 — the real kill switch**, before the first order path exists.~~ **Done.** Three access paths; verified working with the dashboard dead.
-5. **A4 + A5 — OMS and accounting.** Then, and only then, C1.
+5. ~~**A4 + A5 — OMS and accounting.**~~ **Done for paper.** Positions, PnL and per-sleeve attribution all work against a simulated venue. What remains is the live venue adapter and reconciliation against venue truth — the step that finally lets an order reach an exchange, and the one worth pausing on.
 
 Meanwhile the scanner keeps running in shadow and accumulating the evidence that decides whether step 5 is worth taking at all.

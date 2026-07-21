@@ -93,6 +93,23 @@ export type GateInput = {
   /** Omit only for fund-level checks that genuinely have no sleeve. */
   sleeve?: SleeveContext;
 
+  /**
+   * Paper mode: simulated fills, no real capital, no exchange reachable.
+   *
+   * Exempts exactly two checks, and only these:
+   *   - `strategy_tier_locked` — the capital ladder governs LIVE capital. T0
+   *     explicitly unlocks "live opportunity scoring and paper PnL"
+   *     (DESIGN.md §7), so blocking paper on tier would forbid the thing the
+   *     tier exists to encourage.
+   *   - `risk_budget_exhausted` from the TIER's risk budget — again a
+   *     live-capital allocation. Sleeve budgets still apply in full.
+   *
+   * Everything else is enforced identically: halt, staleness, venue health,
+   * economics, breakeven, leverage, sleeve limits, position counts. If paper
+   * and live could diverge on those, paper would stop being evidence.
+   */
+  paperMode?: boolean;
+
   /** Net edge over the whole expected hold, in bps of leg notional. */
   netEdgeBps: number;
   /** Operator-configured minimum net edge, in bps. */
@@ -173,7 +190,7 @@ export function evaluateGate(g: GateInput): GateDecision {
     };
   }
 
-  if (!g.tier.liveStrategies.includes(g.strategyCode)) {
+  if (!g.paperMode && !g.tier.liveStrategies.includes(g.strategyCode)) {
     return {
       allowed: false,
       code: "strategy_tier_locked",
@@ -297,32 +314,36 @@ export function evaluateGate(g: GateInput): GateDecision {
     };
   }
 
+  // The tier's risk budget allocates LIVE capital, so it does not bind paper.
+  // Sleeve budgets are enforced below regardless of mode.
   const budgetFraction = g.tier.riskBudget[g.riskTier];
   const budgetUsd = g.navUsd * budgetFraction;
-  const budgetHeadroom = budgetUsd - g.riskTierDeployedUsd;
+  const budgetHeadroom = g.paperMode ? Infinity : budgetUsd - g.riskTierDeployedUsd;
 
-  if (budgetFraction <= 0) {
-    return {
-      allowed: false,
-      code: "risk_budget_exhausted",
-      detail: `Tier ${g.tier.id} allocates 0% to ${g.riskTier} risk`,
-    };
-  }
+  if (!g.paperMode) {
+    if (budgetFraction <= 0) {
+      return {
+        allowed: false,
+        code: "risk_budget_exhausted",
+        detail: `Tier ${g.tier.id} allocates 0% to ${g.riskTier} risk`,
+      };
+    }
 
-  if (budgetHeadroom <= 0) {
-    return {
-      allowed: false,
-      code: "risk_budget_exhausted",
-      detail: `${g.riskTier} budget $${budgetUsd.toFixed(2)} fully deployed`,
-    };
-  }
+    if (budgetHeadroom <= 0) {
+      return {
+        allowed: false,
+        code: "risk_budget_exhausted",
+        detail: `${g.riskTier} budget $${budgetUsd.toFixed(2)} fully deployed`,
+      };
+    }
 
-  if (g.capitalRequiredUsd > g.freeBalanceUsd) {
-    return {
-      allowed: false,
-      code: "insufficient_balance",
-      detail: `Needs $${g.capitalRequiredUsd.toFixed(2)}, free $${g.freeBalanceUsd.toFixed(2)}`,
-    };
+    if (g.capitalRequiredUsd > g.freeBalanceUsd) {
+      return {
+        allowed: false,
+        code: "insufficient_balance",
+        detail: `Needs $${g.capitalRequiredUsd.toFixed(2)}, free $${g.freeBalanceUsd.toFixed(2)}`,
+      };
+    }
   }
 
   // --- sizing --------------------------------------------------------------
@@ -331,9 +352,9 @@ export function evaluateGate(g: GateInput): GateDecision {
   // budget allows, and what we can actually fund.
 
   const fundableNotional =
-    g.capitalRequiredUsd > 0
-      ? (g.freeBalanceUsd / g.capitalRequiredUsd) * g.intendedNotionalUsd
-      : g.intendedNotionalUsd;
+    g.paperMode || g.capitalRequiredUsd <= 0
+      ? g.intendedNotionalUsd
+      : (g.freeBalanceUsd / g.capitalRequiredUsd) * g.intendedNotionalUsd;
 
   const limits = [g.intendedNotionalUsd, budgetHeadroom, fundableNotional];
 
