@@ -291,6 +291,30 @@ export function sleevePnl(marked: MarkedPosition[]): SleevePnl[] {
 }
 
 /**
+ * Count LOGICAL positions, not legs.
+ *
+ * A delta-neutral carry is one trade held as two legs — long spot and short
+ * perp. Counting legs makes a single carry look like two positions, so a limit
+ * of "1 concurrent position" permits half a carry and then blocks everything
+ * forever. That is not a hypothetical: it silently froze the paper book after
+ * its first trade.
+ *
+ * Legs are grouped by (sleeve, strategy, asset), which is the unit a strategy
+ * actually reasons about when it decides to enter or exit.
+ */
+export function countLogicalPositions(
+  positions: { qty: number; sleeveId: string; asset: string }[],
+  strategyOf: (p: { sleeveId: string; asset: string }) => string = () => "",
+): number {
+  const groups = new Set<string>();
+  for (const p of positions) {
+    if (p.qty === 0) continue;
+    groups.add(`${p.sleeveId}:${strategyOf(p)}:${p.asset}`);
+  }
+  return groups.size;
+}
+
+/**
  * Net delta per underlying asset, across venues and markets.
  *
  * The number that proves a "delta-neutral" strategy actually is. A carry

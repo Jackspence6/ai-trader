@@ -27,6 +27,7 @@ import { bindingMinNotional } from "@/lib/calc/costs";
 import { computePortfolio, sleeveForStrategy } from "@/lib/portfolio/sleeves";
 import {
   buildPositions,
+  countLogicalPositions,
   markPositions,
   type Fill,
   type FundingPayment,
@@ -195,7 +196,8 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
             maxPositionUsd: sleeveState.maxPositionUsd,
             maxLeverage: sleeveState.def.limits.maxLeverage,
             maxConcurrentPositions: sleeveState.def.limits.maxConcurrentPositions,
-            openPositions: sleevePositions.length,
+            // Logical positions, not legs — a carry is one trade held as two.
+            openPositions: countLogicalPositions(sleevePositions),
             minimumViableUsd: sleeveState.minimumViableUsd,
           }
         : undefined,
@@ -214,7 +216,7 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
       navUsd: config.navUsd,
       freeBalanceUsd: Math.max(config.navUsd - deployedUsd, 0),
       capitalRequiredUsd: opp.capitalRequiredUsd,
-      openPositions: marked.filter((p) => p.qty !== 0).length,
+      openPositions: countLogicalPositions(marked),
       riskTierDeployedUsd: deployedUsd,
       leverage: config.perpLeverage,
       maxLeverage: config.maxLeverage,

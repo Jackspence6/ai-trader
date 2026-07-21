@@ -44,6 +44,12 @@ export const NAV: NavGroup[] = [
         hint: "Live prices, funding, spreads and indicators across all venues",
       },
       {
+        key: "performance",
+        label: "Performance",
+        href: "/performance",
+        hint: "Where the money came from, and what is blocking it",
+      },
+      {
         key: "signals",
         label: "Signals",
         href: "/signals",

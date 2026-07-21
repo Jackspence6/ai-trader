@@ -15,6 +15,7 @@ import {
   applyFill,
   assetDelta,
   buildPositions,
+  countLogicalPositions,
   markPositions,
   sleevePnl,
   type Fill,
@@ -340,5 +341,56 @@ describe("asset delta", () => {
     ]);
     const delta = assetDelta(markPositions(ps, new Map([["BTC", 100]])));
     expect(delta.get("BTC")).toBe(3);
+  });
+});
+
+describe("logical position counting", () => {
+  it("counts a two-leg carry as ONE position, not two", () => {
+    // The bug this exists to prevent: counting legs makes a single carry look
+    // like two positions, so a limit of 1 permits half a carry and then blocks
+    // everything forever. It silently froze the paper book after one trade.
+    const ps = buildPositions([
+      fill({ market: "spot", side: "buy", qty: 1, asset: "BTC" }),
+      fill({ market: "perp", side: "sell", qty: 1, asset: "BTC" }),
+    ]);
+    expect(ps).toHaveLength(2); // two legs
+    expect(countLogicalPositions(ps)).toBe(1); // one trade
+  });
+
+  it("counts different assets separately", () => {
+    const ps = buildPositions([
+      fill({ market: "spot", side: "buy", asset: "BTC" }),
+      fill({ market: "perp", side: "sell", asset: "BTC" }),
+      fill({ market: "spot", side: "buy", asset: "ETH" }),
+      fill({ market: "perp", side: "sell", asset: "ETH" }),
+    ]);
+    expect(countLogicalPositions(ps)).toBe(2);
+  });
+
+  it("counts the same asset in different sleeves separately", () => {
+    // Sleeves are separately mandated books; a BTC carry in Core and one in
+    // Systematic are two decisions, not one.
+    const ps = buildPositions([
+      fill({ sleeveId: "core", side: "buy", asset: "BTC" }),
+      fill({ sleeveId: "systematic", side: "buy", asset: "BTC" }),
+    ]);
+    expect(countLogicalPositions(ps)).toBe(2);
+  });
+
+  it("ignores closed legs", () => {
+    const ps = buildPositions([
+      fill({ side: "buy", qty: 1, price: 100 }),
+      fill({ side: "sell", qty: 1, price: 110 }),
+    ]);
+    expect(countLogicalPositions(ps)).toBe(0);
+  });
+
+  it("counts a cross-venue spread on one asset as one position", () => {
+    // Two perp legs on different venues are still one trade.
+    const ps = buildPositions([
+      fill({ venue: "bybit", market: "perp", side: "sell", asset: "LINK" }),
+      fill({ venue: "hyperliquid", market: "perp", side: "buy", asset: "LINK" }),
+    ]);
+    expect(countLogicalPositions(ps)).toBe(1);
   });
 });

@@ -13,7 +13,11 @@
  */
 
 import { readFills, readFundingPayments } from "@/lib/oms/store";
-import { buildPositions, markPositions } from "@/lib/portfolio/positions";
+import {
+  buildPositions,
+  countLogicalPositions,
+  markPositions,
+} from "@/lib/portfolio/positions";
 import { fetchSnapshot } from "@/lib/market/venues";
 import {
   computeNav,
@@ -80,7 +84,10 @@ export async function tradingPnl(
       totalUsd: realisedUsd + unrealisedUsd + fundingUsd - feesUsd,
     },
     unpriced: open.filter((p) => p.markPrice === null).map((p) => p.asset),
-    openPositions: open.length,
+    // Logical positions, matching what the risk gate counts. Reporting legs
+    // here while the limit counts trades makes "2 open, limit 1" look broken
+    // when it is correct.
+    openPositions: countLogicalPositions(marked),
   };
 }
 

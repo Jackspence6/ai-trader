@@ -50,6 +50,7 @@ export default function CommandCenter() {
   const markets = useLive<MarketSnapshot>("/api/markets", 15_000);
   const signals = useLive<SignalsResponse>("/api/signals", 25_000);
   const halt = useLive<{ state: { halted: boolean } }>("/api/halt", 20_000);
+  const positions = useLive<{ open: number }>("/api/positions", 30_000);
 
   const config = cfg.data?.config ?? null;
   // NAV is derived from the capital ledger plus trading P&L, never from config.
@@ -186,34 +187,34 @@ export default function CommandCenter() {
       </div>
 
       {/* ------------------------------------------------------- scanner row */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <Panel label="SCANNER">
-          <Stat label="OPPORTUNITIES SCORED" sub={<span className="text-dim">latest scan</span>}>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Panel>
+          <Stat label="SCANNING" sub={<span className="text-dim">opportunities</span>}>
             <span className="tnum text-[22px] text-ink">{opps.length}</span>
           </Stat>
         </Panel>
-        <Panel label="POSITIVE NET EDGE">
-          <Stat label="WOULD BE TAKEN" sub={<span className="text-dim">clears every gate</span>}>
+        <Panel>
+          <Stat label="WOULD TAKE" sub={<span className="text-dim">clears every gate</span>}>
             <span className={cx("tnum text-[22px]", viable.length > 0 ? "text-up" : "text-muted")}>
               {viable.length}
             </span>
           </Stat>
         </Panel>
-        <Panel label="BEST EDGE">
+        <Panel>
           <Stat
-            label={best ? `${best.asset} · ${best.strategy}` : "NONE FOUND"}
-            sub={best && <span className="text-dim">{best.route}</span>}
+            label="BEST EDGE"
+            sub={best && <span className="text-dim">{best.asset} · {best.strategy}</span>}
           >
             {best ? (
-              <span className="tnum text-[22px] text-up">{best.netBps.toFixed(1)}bp</span>
+              <span className="tnum text-[22px] text-up">{best.netBps.toFixed(0)}bp</span>
             ) : (
               <span className="text-[22px] text-dim">—</span>
             )}
           </Stat>
         </Panel>
-        <Panel label="OPEN POSITIONS">
-          <Stat label="ACROSS ALL VENUES" sub={<span className="text-dim">no capital deployed</span>}>
-            <span className="tnum text-[22px] text-muted">0</span>
+        <Panel>
+          <Stat label="OPEN" sub={<span className="text-dim">positions</span>}>
+            <span className="tnum text-[22px] text-muted">{positions.data?.open ?? 0}</span>
           </Stat>
         </Panel>
       </div>
@@ -234,9 +235,7 @@ export default function CommandCenter() {
             <thead>
               <tr className="border-b border-line">
                 <Th>SLEEVE</Th>
-                <Th>MANDATE</Th>
                 <Th right>ALLOCATED</Th>
-                <Th right>SHARE</Th>
                 <Th right>TARGET APR</Th>
                 <Th right>EXPECT DD</Th>
                 <Th>STATE</Th>
@@ -248,14 +247,8 @@ export default function CommandCenter() {
                   <Td>
                     <span className="text-ink">{s.def.name}</span>
                   </Td>
-                  <Td>
-                    <span className="text-dim">{s.def.strategies.join(" · ")}</span>
-                  </Td>
                   <Td right>
                     <Money usd={s.allocatedUsd} />
-                  </Td>
-                  <Td right>
-                    <span className="tnum">{(s.shareOfNav * 100).toFixed(0)}%</span>
                   </Td>
                   <Td right>
                     <span className="tnum">
@@ -288,16 +281,8 @@ export default function CommandCenter() {
                 <Td>
                   <span className="text-muted">Reserve</span>
                 </Td>
-                <Td>
-                  <span className="text-dim">unassigned buffer</span>
-                </Td>
                 <Td right>
                   <Money usd={portfolio.reserveUsd} />
-                </Td>
-                <Td right>
-                  <span className="tnum">
-                    {(Math.max(portfolio.reserveShare, 0) * 100).toFixed(0)}%
-                  </span>
                 </Td>
                 <Td right>
                   <span className="text-dim">—</span>
@@ -336,37 +321,24 @@ export default function CommandCenter() {
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-line">
-                  <Th>ST</Th>
                   <Th>ASSET</Th>
                   <Th>ROUTE</Th>
-                  <Th right>FUNDING APR</Th>
                   <Th right>NET EDGE</Th>
                   <Th right>NET APR</Th>
                   <Th>DECISION</Th>
                 </tr>
               </thead>
               <tbody>
-                {opps.slice(0, 8).map((o) => (
+                {opps.slice(0, 5).map((o) => (
                   <tr key={o.id} className="border-b border-line/60 hover:bg-raised/40">
                     <Td>
-                      <span className="micro text-accent" title={o.strategyName}>
+                      <span className="text-ink">{o.asset}</span>
+                      <span className="micro ml-2 text-accent" title={o.strategyName}>
                         {o.strategy}
                       </span>
                     </Td>
                     <Td>
-                      <span className="text-ink">{o.asset}</span>
-                    </Td>
-                    <Td>
                       <span className="text-dim">{o.route}</span>
-                    </Td>
-                    <Td right>
-                      {o.fundingApr === undefined ? (
-                        <span className="text-dim">—</span>
-                      ) : (
-                        <span className={cx("tnum", o.fundingApr >= 0 ? "text-up" : "text-down")}>
-                          {(o.fundingApr * 100).toFixed(2)}%
-                        </span>
-                      )}
                     </Td>
                     <Td right>
                       <span

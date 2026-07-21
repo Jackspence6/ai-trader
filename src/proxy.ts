@@ -26,12 +26,21 @@ export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.svg).*)"],
 };
 
+/**
+ * Paths the site lock does not gate.
+ *
+ * `/api/cron/*` is here because a scheduled invocation has no browser and no
+ * cookie. It is not unprotected — it enforces its own bearer-token check, and
+ * refuses to run at all when CRON_SECRET is unset.
+ */
 const PUBLIC_PATHS = new Set(["/login", "/api/auth"]);
+const PUBLIC_PREFIXES = ["/api/cron/"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
   if (await verifyToken(token)) return NextResponse.next();
