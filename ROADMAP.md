@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-20 · ~9,300 lines, 99 tests, 3 commits
+**Status:** 2026-07-21 · ~10,600 lines, 114 tests, 5 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -63,9 +63,9 @@ Without this the platform cannot trade at all. This is the biggest single block 
 | A5 | **Position & PnL accounting** — realised/unrealised, fee and funding ledger, per-sleeve and per-strategy attribution | Sleeve isolation is currently theoretical: the limits exist, but nothing measures a sleeve's drawdown to trip them. | 3–4d |
 | A6 | **Continuous reconciliation** — computed vs venue-reported balances | Mismatch beyond tolerance halts trading. Without it we can be wrong for days without knowing. | 2d |
 | A7 | **Kill switch, for real** — cancel-all across venues, optional flatten, plus exchange-side dead-man timers | Today the HALT button flips a config flag. It must cancel resting orders venue-side and register auto-cancel-on-disconnect. | 2d |
-| A8 | **Market-data recorder** — L2 books and trades to Timescale, Parquet archive | Every day this is not running is training data we can never recover. Should arguably start *before* everything else. | 2d |
+| ~~A8~~ | ~~**Market-data recorder**~~ — **DONE.** Quotes, funding and scan decisions to append-only JSONL, gzipped daily, PID-based liveness. Runs standalone via `pnpm record`. | Every day this is not running is training data we can never recover. Shipped first for exactly that reason. | ✅ |
 
-**Phase A total: ~21–25 days.** At the end of it the system can trade — badly, with one strategy, unproven.
+**Phase A remaining: ~19–23 days** (A8 done). At the end of it the system can trade — badly, with one strategy, unproven.
 
 ### Phase B · Proving the edge
 
@@ -163,8 +163,8 @@ Everything else — scanning, sizing, entering, exiting, halting, rebalancing, r
 
 In order, and the first item is not optional:
 
-1. **A8 — the market-data recorder.** Every day it is not running is data we cannot get back, and it needs nothing else to exist first.
-2. **A1 — Postgres/Timescale.** Everything else needs somewhere to write.
+1. ~~**A8 — the market-data recorder.**~~ **Done and running.** Recording quotes, funding and scan decisions.
+2. **A1 — Postgres/Timescale.** Everything else needs somewhere to write. The recorder's JSONL imports as a straight replay.
 3. **A2 + A3 — credentials and authenticated adapters**, read-only first. Balances visible in the dashboard before anything can trade.
 4. **A7 — the real kill switch**, before the first order path exists. The ability to stop must predate the ability to start.
 5. **A4 + A5 — OMS and accounting.** Then, and only then, C1.
