@@ -28,6 +28,8 @@ export type Migration = {
   name: string;
   sql: string;
   checksum: string;
+  /** Extensions this migration needs, declared as `-- requires: name`. */
+  requires: string[];
 };
 
 export type AppliedMigration = {
@@ -52,7 +54,10 @@ export async function loadMigrations(): Promise<Migration[]> {
   return Promise.all(
     files.map(async (name) => {
       const sql = await fs.readFile(path.join(dir, name), "utf-8");
-      return { name, sql, checksum: checksum(sql) };
+      const requires = [...sql.matchAll(/^--\s*requires:\s*(.+)$/gim)].flatMap((m) =>
+        m[1].split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+      );
+      return { name, sql, checksum: checksum(sql), requires };
     }),
   );
 }
@@ -77,6 +82,8 @@ export async function appliedMigrations(): Promise<AppliedMigration[]> {
 export type MigrateResult = {
   applied: string[];
   skipped: string[];
+  /** Skipped because a required extension is unavailable here. */
+  unsupported: { name: string; missing: string[] }[];
 };
 
 /**
@@ -95,8 +102,21 @@ export async function migrate(
 
   const applied: string[] = [];
   const skipped: string[] = [];
+  const unsupported: { name: string; missing: string[] }[] = [];
+  const available = await availableExtensions();
 
   for (const m of all) {
+    // A migration needing an extension this server does not have is skipped,
+    // not failed. Neon has no TimescaleDB, and the dashboard does not need the
+    // market-data tables — failing the whole migration there would block the
+    // tables it DOES need.
+    const missing = m.requires.filter((r) => !available.has(r));
+    if (missing.length > 0) {
+      unsupported.push({ name: m.name, missing });
+      log(`skipping ${m.name} — requires ${missing.join(", ")}, not available here`);
+      continue;
+    }
+
     const existing = done.get(m.name);
 
     if (existing !== undefined) {
@@ -123,14 +143,52 @@ export async function migrate(
     applied.push(m.name);
   }
 
-  return { applied, skipped };
+  return { applied, skipped, unsupported };
+}
+
+/**
+ * Capabilities this server actually has.
+ *
+ * Deliberately probes for the FUNCTION we need rather than the extension name.
+ * Neon lists `timescaledb` in `pg_available_extensions` but ships only the
+ * Apache-licensed subset, which has no `create_hypertable` — so a name check
+ * says "supported" and the migration then fails on a licence error halfway
+ * through. Asking "can I actually call the thing I need?" is the only check
+ * that means anything.
+ */
+export async function availableExtensions(): Promise<Set<string>> {
+  const caps = new Set<string>();
+
+  try {
+    // Creating the extension is a prerequisite for the function existing, and
+    // is a no-op where it already exists. A failure here simply means the
+    // capability is absent.
+    await query("CREATE EXTENSION IF NOT EXISTS timescaledb");
+  } catch {
+    // Not available, or not permitted. Either way, probe below decides.
+  }
+
+  try {
+    const rows = await query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM pg_proc WHERE proname = 'create_hypertable'",
+    );
+    if (Number(rows[0]?.n ?? 0) > 0) caps.add("timescaledb");
+  } catch {
+    // Leave the capability absent.
+  }
+
+  return caps;
 }
 
 /** Pending migrations, without applying them. */
 export async function pendingMigrations(): Promise<string[]> {
   const all = await loadMigrations();
   const done = new Set((await appliedMigrations()).map((m) => m.name));
-  return all.filter((m) => !done.has(m.name)).map((m) => m.name);
+  const available = await availableExtensions();
+  return all
+    .filter((m) => !done.has(m.name))
+    .filter((m) => m.requires.every((r) => available.has(r)))
+    .map((m) => m.name);
 }
 
 /** Table row counts, for the status command. */

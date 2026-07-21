@@ -19,8 +19,7 @@
  * accident.
  */
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import { KEYS, readJson, writeJson } from "@/lib/store/kv";
 import { fingerprint, open, seal, VaultError, type SealedRecord } from "./crypto";
 
 export type VenueId = "binance" | "bybit" | "hyperliquid";
@@ -59,28 +58,25 @@ type StoredCredential = CredentialMeta & {
   passphrase: SealedRecord | null;
 };
 
-function vaultPath(): string {
-  return (
-    process.env.VAULT_PATH ?? path.join(process.cwd(), ".data", "credentials.json")
-  );
-}
-
+/**
+ * Storage goes through the KV layer, so credentials live in Postgres on a
+ * serverless host and in an owner-only local file otherwise. Set `STATE_DIR` to
+ * relocate the local files.
+ *
+ * What does NOT change with the backend: contents are encrypted before they
+ * reach the store either way. A database compromise yields ciphertext, not API
+ * keys — the master key is only ever in the process environment.
+ */
 async function readAll(): Promise<StoredCredential[]> {
   try {
-    const raw = await fs.readFile(vaultPath(), "utf-8");
-    return JSON.parse(raw) as StoredCredential[];
+    return (await readJson<StoredCredential[]>(KEYS.vault)) ?? [];
   } catch {
     return [];
   }
 }
 
 async function writeAll(creds: StoredCredential[]): Promise<void> {
-  const file = vaultPath();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(creds, null, 2), "utf-8");
-  // Owner-only. The contents are encrypted, but there is no reason for the
-  // file to be world-readable and every reason for it not to be.
-  await fs.chmod(file, 0o600);
+  await writeJson(KEYS.vault, creds);
 }
 
 function toMeta(c: StoredCredential): CredentialMeta {

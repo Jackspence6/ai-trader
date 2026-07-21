@@ -19,22 +19,21 @@ import os from "node:os";
 import path from "node:path";
 
 let tmp: string;
-let prevState: string | undefined;
-let prevAudit: string | undefined;
+let prevDir: string | undefined;
+
+// File names come from the KV layer's keys, not from the test.
+const stateFile = () => path.join(tmp, "halt_state.json");
+const auditFile = () => path.join(tmp, "log_halt_audit.jsonl");
 
 beforeEach(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "halt-"));
-  prevState = process.env.HALT_PATH;
-  prevAudit = process.env.HALT_AUDIT_PATH;
-  process.env.HALT_PATH = path.join(tmp, "halt.json");
-  process.env.HALT_AUDIT_PATH = path.join(tmp, "halt-audit.jsonl");
+  prevDir = process.env.STATE_DIR;
+  process.env.STATE_DIR = tmp;
 });
 
 afterEach(async () => {
-  if (prevState === undefined) delete process.env.HALT_PATH;
-  else process.env.HALT_PATH = prevState;
-  if (prevAudit === undefined) delete process.env.HALT_AUDIT_PATH;
-  else process.env.HALT_AUDIT_PATH = prevAudit;
+  if (prevDir === undefined) delete process.env.STATE_DIR;
+  else process.env.STATE_DIR = prevDir;
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
@@ -65,7 +64,7 @@ describe("halt state", () => {
     // unreadable we do not know whether it is safe to trade, and the only
     // acceptable answer to that is "stop".
     const { readHalt } = await load();
-    await fs.writeFile(process.env.HALT_PATH!, "{ this is not json", "utf-8");
+    await fs.writeFile(stateFile(), "{ this is not json", "utf-8");
 
     const s = await readHalt();
     expect(s.halted).toBe(true);
@@ -74,7 +73,7 @@ describe("halt state", () => {
 
   it("fails safe synchronously too", async () => {
     const { readHaltSync } = await load();
-    await fs.writeFile(process.env.HALT_PATH!, "truncated{", "utf-8");
+    await fs.writeFile(stateFile(), "truncated{", "utf-8");
     expect(readHaltSync().halted).toBe(true);
   });
 
@@ -87,7 +86,7 @@ describe("halt state", () => {
   it("treats a non-boolean halted field as not halted, not as truthy junk", async () => {
     const { readHalt } = await load();
     await fs.writeFile(
-      process.env.HALT_PATH!,
+      stateFile(),
       JSON.stringify({ halted: "no", since: "soon" }),
       "utf-8",
     );
@@ -145,7 +144,7 @@ describe("halt state", () => {
   it("survives a corrupt line in the audit log", async () => {
     const { halt, readAudit } = await load();
     await halt("one", "cli");
-    await fs.appendFile(process.env.HALT_AUDIT_PATH!, "not json\n", "utf-8");
+    await fs.appendFile(auditFile(), "not json\n", "utf-8");
     await halt("two", "cli");
     const audit = await readAudit();
     expect(audit.length).toBe(2);

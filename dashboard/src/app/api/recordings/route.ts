@@ -7,12 +7,13 @@
 
 import { readLiveness } from "@/lib/recorder/heartbeat";
 import { recordingsRoot, summarise } from "@/lib/recorder/store";
+import { backendDescription } from "@/lib/store/kv";
 
 export async function GET() {
   const [summary, liveness] = await Promise.all([summarise(14), readLiveness()]);
 
   return Response.json(
-    { root: recordingsRoot(), summary, liveness },
+    { root: recordingsRoot(), summary, liveness, stateBackend: backendDescription() },
     { headers: { "cache-control": "no-store" } },
   );
 }

@@ -14,9 +14,9 @@
  * So: a tiny file, a tiny reader, and a parse failure means halted.
  */
 
-import { promises as fs } from "node:fs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { appendLog, backend, KEYS, LOGS, readJson, readLog, writeJson } from "@/lib/store/kv";
 
 export type HaltSource = "dashboard" | "cli" | "http" | "auto" | "unknown";
 
@@ -38,13 +38,19 @@ export const RUNNING: HaltState = {
   actor: null,
 };
 
+/**
+ * File path for the SYNCHRONOUS reader only.
+ *
+ * `readHaltSync` exists for the standalone kill-switch endpoint, which runs on
+ * a machine we control and must answer without an event-loop turn. It is
+ * file-only by necessity — there is no synchronous Postgres client — and that
+ * is fine, because the process that needs it is the one that also owns the
+ * files. Every other reader uses the async path and follows DATABASE_URL.
+ */
 function statePath(): string {
-  return process.env.HALT_PATH ?? path.join(process.cwd(), ".data", "halt.json");
-}
-
-function auditPath(): string {
-  return (
-    process.env.HALT_AUDIT_PATH ?? path.join(process.cwd(), ".data", "halt-audit.jsonl")
+  return path.join(
+    process.env.STATE_DIR ?? path.join(process.cwd(), ".data"),
+    "halt_state.json",
   );
 }
 
@@ -58,15 +64,12 @@ function auditPath(): string {
  * false all-clear is unbounded.
  */
 export async function readHalt(): Promise<HaltState> {
-  let raw: string;
   try {
-    raw = await fs.readFile(statePath(), "utf-8");
-  } catch {
-    return { ...RUNNING };
-  }
+    const parsed = await readJson<Partial<HaltState>>(KEYS.halt);
+    // Absent means never halted, which is the correct reading of a fresh
+    // install. Only a store that is present and broken fails safe.
+    if (parsed === null) return { ...RUNNING };
 
-  try {
-    const parsed = JSON.parse(raw) as Partial<HaltState>;
     return {
       halted: Boolean(parsed.halted),
       since: typeof parsed.since === "number" ? parsed.since : null,
@@ -74,12 +77,17 @@ export async function readHalt(): Promise<HaltState> {
       source: (parsed.source as HaltSource) ?? null,
       actor: typeof parsed.actor === "string" ? parsed.actor : null,
     };
-  } catch {
+  } catch (e) {
+    // Unreadable state — corrupt file, or a database we cannot reach. Either
+    // way we do not know whether it is safe to trade, and the only acceptable
+    // answer to that is "stop". A false halt costs an opportunity; a false
+    // all-clear is unbounded.
     return {
       halted: true,
       since: null,
-      reason:
-        "Halt state file is corrupt and could not be parsed. Failing safe: treating the system as halted.",
+      reason: `Halt state could not be read (${
+        e instanceof Error ? e.message : String(e)
+      }). Failing safe: treating the system as halted.`,
       source: "auto",
       actor: null,
     };
@@ -135,8 +143,7 @@ export type HaltEvent = {
 
 async function appendAudit(event: HaltEvent): Promise<void> {
   try {
-    await fs.mkdir(path.dirname(auditPath()), { recursive: true });
-    await fs.appendFile(auditPath(), JSON.stringify(event) + "\n", "utf-8");
+    await appendLog(LOGS.haltAudit, [event]);
   } catch {
     // An audit write failure must never prevent a halt. Losing the log entry
     // is bad; failing to stop trading because we could not log is worse.
@@ -194,34 +201,21 @@ export async function resume(
 }
 
 async function write(state: HaltState): Promise<void> {
-  const file = statePath();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  // Write to a temp file and rename. Rename is atomic on POSIX, so a crash
-  // mid-write cannot leave a truncated halt file — which, given the
-  // fail-safe-to-halted parse above, would otherwise wedge the system.
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf-8");
-  await fs.rename(tmp, file);
+  // The KV layer writes atomically on files (temp + rename) and
+  // transactionally on Postgres, so a crash mid-write cannot leave truncated
+  // state — which, given the fail-safe-to-halted read above, would otherwise
+  // wedge the system.
+  await writeJson(KEYS.halt, state);
 }
 
 /** Recent halt/resume events, newest first. */
 export async function readAudit(limit = 50): Promise<HaltEvent[]> {
   try {
-    const raw = await fs.readFile(auditPath(), "utf-8");
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as HaltEvent;
-        } catch {
-          return null;
-        }
-      })
-      .filter((x): x is HaltEvent => x !== null)
-      .reverse()
-      .slice(0, limit);
+    return (await readLog<HaltEvent>(LOGS.haltAudit, limit)).reverse();
   } catch {
     return [];
   }
 }
+
+/** Which backend halt state is stored in, for display. */
+export { backend as haltBackend };

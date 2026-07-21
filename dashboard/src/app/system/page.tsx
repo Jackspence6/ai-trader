@@ -19,6 +19,7 @@ type RecordingsResponse = {
   root: string;
   summary: RecordingSummary;
   liveness: LivenessState;
+  stateBackend: string;
 };
 
 function bytes(n: number): string {
@@ -121,7 +122,13 @@ export default function SystemPage() {
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-dim">Streams</dt>
-                <dd className="text-muted">quotes · funding · scan</dd>
+                <dd className="text-muted">quotes · funding · scan · nav</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-dim">App state</dt>
+                <dd className="truncate text-muted" title={data?.stateBackend}>
+                  {data?.stateBackend ?? "—"}
+                </dd>
               </div>
             </dl>
             <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">

@@ -187,20 +187,23 @@ describe("request signing", () => {
 
 describe("credential store", () => {
   let tmp: string;
-  let prevVault: string | undefined;
+  let prevDir: string | undefined;
   let prevKey: string | undefined;
+
+  // The vault file is named by the KV layer's key, not chosen here.
+  const vaultFile = () => path.join(tmp, "credentials.json");
 
   beforeEach(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vault-"));
-    prevVault = process.env.VAULT_PATH;
+    prevDir = process.env.STATE_DIR;
     prevKey = process.env.VAULT_KEY;
-    process.env.VAULT_PATH = path.join(tmp, "credentials.json");
+    process.env.STATE_DIR = tmp;
     process.env.VAULT_KEY = KEY;
   });
 
   afterEach(async () => {
-    if (prevVault === undefined) delete process.env.VAULT_PATH;
-    else process.env.VAULT_PATH = prevVault;
+    if (prevDir === undefined) delete process.env.STATE_DIR;
+    else process.env.STATE_DIR = prevDir;
     if (prevKey === undefined) delete process.env.VAULT_KEY;
     else process.env.VAULT_KEY = prevKey;
     await fs.rm(tmp, { recursive: true, force: true });
@@ -250,7 +253,7 @@ describe("credential store", () => {
       apiSecret: "PLAINTEXTSECRET12",
     });
 
-    const onDisk = await fs.readFile(process.env.VAULT_PATH!, "utf-8");
+    const onDisk = await fs.readFile(vaultFile(), "utf-8");
     expect(onDisk).not.toContain("PLAINTEXTKEY12345");
     expect(onDisk).not.toContain("PLAINTEXTSECRET12");
   });
@@ -258,7 +261,7 @@ describe("credential store", () => {
   it("makes the vault file owner-only", async () => {
     const { add } = await load();
     await add({ venue: "binance", label: "M", apiKey: "k".repeat(20), apiSecret: "s".repeat(20) });
-    const st = await fs.stat(process.env.VAULT_PATH!);
+    const st = await fs.stat(vaultFile());
     expect(st.mode & 0o077).toBe(0);
   });
 

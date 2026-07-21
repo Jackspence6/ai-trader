@@ -1,8 +1,9 @@
 /**
  * Order and fill persistence.
  *
- * Append-only JSONL, same as the recorder and for the same reasons: crash
- * safety, trivial inspection, and a straight replay into Postgres later.
+ * Append-only through the shared KV layer, so the book lives in Postgres when
+ * `DATABASE_URL` is set and in JSONL otherwise. Append-only either way: crash
+ * safety, trivial inspection, and nothing is ever rewritten.
  *
  * Positions are NOT stored. They are derived by replaying fills every time
  * (see `portfolio/positions.ts`). Storing them would create a second source of
@@ -11,59 +12,28 @@
  * about what it holds.
  */
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import { appendLog, clearLog, LOGS, readLog } from "@/lib/store/kv";
 import type { Fill, FundingPayment } from "@/lib/portfolio/positions";
 import type { Order } from "./types";
 
 export type PaperStream = "orders" | "fills" | "funding";
 
-function root(): string {
-  return process.env.PAPER_DIR ?? path.join(process.cwd(), ".data", "paper");
-}
+const STREAM_KEY: Record<PaperStream, string> = {
+  orders: LOGS.orders,
+  fills: LOGS.fills,
+  funding: LOGS.funding,
+};
 
-function fileFor(stream: PaperStream): string {
-  return path.join(root(), `${stream}.jsonl`);
-}
+export const recordOrders = (orders: Order[]) => appendLog(STREAM_KEY.orders, orders);
+export const recordFills = (fills: Fill[]) => appendLog(STREAM_KEY.fills, fills);
+export const recordFunding = (payments: FundingPayment[]) =>
+  appendLog(STREAM_KEY.funding, payments);
 
-async function append<T>(stream: PaperStream, rows: T[]): Promise<number> {
-  if (rows.length === 0) return 0;
-  await fs.mkdir(root(), { recursive: true });
-  const payload = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
-  await fs.appendFile(fileFor(stream), payload, "utf-8");
-  return rows.length;
-}
-
-async function readAll<T>(stream: PaperStream): Promise<T[]> {
-  try {
-    const raw = await fs.readFile(fileFor(stream), "utf-8");
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as T;
-        } catch {
-          // A torn final line from a crash must not make the whole book
-          // unreadable — and an unreadable fill log means unknown positions.
-          return null;
-        }
-      })
-      .filter((x): x is T => x !== null);
-  } catch {
-    return [];
-  }
-}
-
-export const recordOrders = (orders: Order[]) => append("orders", orders);
-export const recordFills = (fills: Fill[]) => append("fills", fills);
-export const recordFunding = (payments: FundingPayment[]) => append("funding", payments);
-
-export const readOrders = () => readAll<Order>("orders");
-export const readFills = () => readAll<Fill>("fills");
-export const readFundingPayments = () => readAll<FundingPayment>("funding");
+export const readOrders = () => readLog<Order>(STREAM_KEY.orders);
+export const readFills = () => readLog<Fill>(STREAM_KEY.fills);
+export const readFundingPayments = () => readLog<FundingPayment>(STREAM_KEY.funding);
 
 /** Wipe the paper book. Only ever used deliberately — hence the explicit name. */
 export async function resetPaperBook(): Promise<void> {
-  await fs.rm(root(), { recursive: true, force: true });
+  await Promise.all(Object.values(STREAM_KEY).map((k) => clearLog(k)));
 }

@@ -1,5 +1,12 @@
 -- 001 · Initial schema
 --
+-- requires: timescaledb
+--
+-- Skipped automatically where the TimescaleDB extension is unavailable (Neon,
+-- and most managed Postgres). That is fine and intended: these are the
+-- market-data tables, written by the recorder on a box we control. The
+-- serverless dashboard never writes them, so it does not need them.
+--
 -- Three hypertables mirroring the recorder's three streams, plus NAV history.
 --
 -- Design notes:
