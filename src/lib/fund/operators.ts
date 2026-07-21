@@ -20,6 +20,7 @@ export const OPERATORS: Operator[] = [
   { id: "js", name: "Jack Spence", initials: "JS", colorVar: "--color-s1" },
   { id: "fm", name: "Finn Mclaughlin", initials: "FM", colorVar: "--color-s3" },
   { id: "lk", name: "Lourens Kok", initials: "LK", colorVar: "--color-s4" },
+  { id: "ns", name: "Nic Struwig", initials: "NS", colorVar: "--color-s2" },
 ];
 
 export function operatorById(id: string): Operator | undefined {
