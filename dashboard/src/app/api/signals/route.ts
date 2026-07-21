@@ -11,6 +11,8 @@ import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
 import { UNIVERSE } from "@/lib/market/types";
 import { scan } from "@/lib/engine/scanner";
 import { readConfig } from "@/lib/engine/store";
+import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
+import { daysHeldAbove } from "@/lib/db/nav";
 
 export async function GET() {
   const [snapshot, config] = await Promise.all([fetchSnapshot(), readConfig()]);
@@ -29,12 +31,33 @@ export async function GET() {
     }
   });
 
-  const opportunities = scan({ config, snapshot, fundingHistory });
+  // The tier gate needs to know whether NAV has *held* above a threshold, which
+  // requires recorded history. With the database down we pass zero days held,
+  // so the ladder holds at T0 — the safe direction, since promotion loosens
+  // limits and loosening on missing evidence is what the hold period prevents.
+  let daysHeldAboveThreshold = 0;
+  try {
+    daysHeldAboveThreshold = await daysHeldAbove(tierForNav(config.navUsd).minNavUsd);
+  } catch {
+    daysHeldAboveThreshold = 0;
+  }
+
+  const opportunities = scan({
+    config,
+    snapshot,
+    fundingHistory,
+    daysHeldAboveThreshold,
+  });
 
   return Response.json(
     {
       asOf: snapshot.asOf,
       errors: snapshot.errors,
+      tier: {
+        id: TIERS.find((t) => t.id === "T0")!.id,
+        daysHeld: daysHeldAboveThreshold,
+        holdDaysRequired: PROMOTION_HOLD_DAYS,
+      },
       usingShadowSize: config.navUsd <= 0,
       notionalUsd:
         config.navUsd > 0

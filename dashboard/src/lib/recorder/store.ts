@@ -34,9 +34,9 @@ import path from "node:path";
  * done*, which is the only way to find out whether our predicted edge matches
  * reality before risking capital on it.
  */
-export type Stream = "quotes" | "funding" | "scan";
+export type Stream = "quotes" | "funding" | "scan" | "nav";
 
-export const STREAMS: Stream[] = ["quotes", "funding", "scan"];
+export const STREAMS: Stream[] = ["quotes", "funding", "scan", "nav"];
 
 export type RecordEnvelope<T> = {
   /** Milliseconds since epoch, when we wrote it. */

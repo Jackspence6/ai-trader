@@ -12,6 +12,10 @@
  *   funding — settled funding prints per venue. Lower frequency, higher value:
  *             this is the actual income series for the core strategy, and the
  *             thing a carry backtest is ultimately fitted against.
+ *   nav     — the fund's net asset value over time. Low volume, but the
+ *             capital ladder cannot promote a tier without it: "NAV held above
+ *             the threshold for 7 consecutive days" is unanswerable with no
+ *             history, which is why the ladder is otherwise frozen at T0.
  *   scan    — every opportunity we scored and what we decided. This is the
  *             evidence base. Market data tells us what happened; the scan log
  *             tells us what we *would have done*, which is the only way to
@@ -153,6 +157,15 @@ export function createRecorder(opts: RecorderOptions = {}) {
       const n = await append("scan", opportunities, snapshot.asOf);
       stats.cycles.scan++;
       stats.rows.scan += n;
+
+      // NAV rides the scan cadence rather than the quote cadence. The ladder
+      // asks a daily question, so 5-minute granularity is already far finer
+      // than the decision needs and minute-granularity would be pure volume.
+      await append(
+        "nav",
+        [{ navUsd: config.navUsd, source: config.navUsd > 0 ? "manual" : "unfunded" }],
+        snapshot.asOf,
+      );
 
       const would = opportunities.filter((o) => o.wouldTake).length;
       log(`scan    +${n} rows (${would} would-take)`);

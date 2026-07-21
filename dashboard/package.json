@@ -9,16 +9,21 @@
     "lint": "eslint",
     "record": "tsx scripts/record.ts",
     "record:stats": "tsx scripts/stats.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "tsx scripts/db.ts migrate",
+    "db:import": "tsx scripts/db.ts import",
+    "db:status": "tsx scripts/db.ts status"
   },
   "dependencies": {
     "next": "16.2.10",
+    "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

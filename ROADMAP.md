@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-21 · ~10,600 lines, 114 tests, 5 commits
+**Status:** 2026-07-21 · ~11,900 lines, 128 tests, 6 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -56,7 +56,7 @@ Without this the platform cannot trade at all. This is the biggest single block 
 
 | # | Item | Why it matters | Est. |
 |---|---|---|---|
-| A1 | **Persistent store** — Postgres + TimescaleDB, migrations, hypertables | Config is a JSON file today. Positions, fills and PnL need real storage, and NAV history is a precondition for tier promotion. | 2–3d |
+| ~~A1~~ | ~~**Persistent store**~~ — **DONE.** TimescaleDB in Docker Compose, migration runner with checksums, idempotent JSONL importer, NAV history unfreezing the tier ladder. Optional by design: nothing in the live path blocks on it. | Positions, fills and PnL need real storage, and NAV history is a precondition for tier promotion. | ✅ |
 | A2 | **Encrypted credential vault** — libsodium sealed boxes, master key in OS keychain | The gate between "reads public data" and "can act". Must hard-block any key with withdrawal permission. | 2d |
 | A3 | **Venue adapters, authenticated** — balances, positions, orders, user-data streams | Per-venue quirks: tick/lot size, min notional, post-only rejects, Hyperliquid's volume-based rate budget. | 4–5d |
 | A4 | **OMS / order lifecycle** — submit, amend, cancel, reconcile against venue truth | The exchange is always the source of truth. Our state drifting from theirs is a halt-worthy event. | 4–5d |
@@ -65,7 +65,7 @@ Without this the platform cannot trade at all. This is the biggest single block 
 | A7 | **Kill switch, for real** — cancel-all across venues, optional flatten, plus exchange-side dead-man timers | Today the HALT button flips a config flag. It must cancel resting orders venue-side and register auto-cancel-on-disconnect. | 2d |
 | ~~A8~~ | ~~**Market-data recorder**~~ — **DONE.** Quotes, funding and scan decisions to append-only JSONL, gzipped daily, PID-based liveness. Runs standalone via `pnpm record`. | Every day this is not running is training data we can never recover. Shipped first for exactly that reason. | ✅ |
 
-**Phase A remaining: ~19–23 days** (A8 done). At the end of it the system can trade — badly, with one strategy, unproven.
+**Phase A remaining: ~17–20 days** (A1, A8 done). At the end of it the system can trade — badly, with one strategy, unproven.
 
 ### Phase B · Proving the edge
 
@@ -164,7 +164,7 @@ Everything else — scanning, sizing, entering, exiting, halting, rebalancing, r
 In order, and the first item is not optional:
 
 1. ~~**A8 — the market-data recorder.**~~ **Done and running.** Recording quotes, funding and scan decisions.
-2. **A1 — Postgres/Timescale.** Everything else needs somewhere to write. The recorder's JSONL imports as a straight replay.
+2. ~~**A1 — Postgres/Timescale.**~~ **Done.** Schema, migrations and an idempotent importer; the tier ladder now reads real NAV history.
 3. **A2 + A3 — credentials and authenticated adapters**, read-only first. Balances visible in the dashboard before anything can trade.
 4. **A7 — the real kill switch**, before the first order path exists. The ability to stop must predate the ability to start.
 5. **A4 + A5 — OMS and accounting.** Then, and only then, C1.

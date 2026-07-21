@@ -1,0 +1,44 @@
+# Local infrastructure.
+#
+# Deliberately minimal. DESIGN.md §2 targets $0/month and a single box; this is
+# the local development equivalent — one service, no orchestration, no volumes
+# outside the project directory.
+#
+# Note what is NOT here: the dashboard and the recorder both run outside Docker,
+# on purpose. The recorder must keep capturing even when Docker is not running
+# (that is why it writes files), and the dashboard must keep rendering. Postgres
+# is the *analytical* store — the recorder's JSONL imports into it, and the
+# backtester reads from it. Nothing in the live path blocks on it being up.
+#
+#   docker compose up -d      start
+#   pnpm db:migrate           create the schema
+#   pnpm db:import            replay recordings into hypertables
+#   pnpm db:status            what is loaded
+
+services:
+  timescale:
+    image: timescale/timescaledb:latest-pg17
+    container_name: ai-trader-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader
+      POSTGRES_DB: aitrader
+      # Timescale tuning is skipped intentionally: at our data volume the
+      # defaults are comfortably sufficient, and a tuned config that nobody
+      # understands is a liability rather than an optimisation.
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      # 5433 rather than 5432 so this never collides with a Postgres someone
+      # already has running locally.
+      - "5433:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d aitrader"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  timescale-data:

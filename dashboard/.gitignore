@@ -48,3 +48,5 @@ dev.log
 
 # recorder log
 recorder.log
+
+# database volume is managed by docker compose
