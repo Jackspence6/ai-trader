@@ -164,10 +164,8 @@ export default function ControlPage() {
               {tier.liveStrategies.length > 0 ? tier.liveStrategies.join(" · ") : "none"}
             </span>
           </Stat>
-          <Stat label="TRADING" sub={<span className="text-dim">master switch</span>}>
-            <span className={cx("text-[15px]", draft.globalHalt ? "text-down" : "text-up")}>
-              {draft.globalHalt ? "HALTED" : "ENABLED"}
-            </span>
+          <Stat label="HALT CONTROL" sub={<span className="text-dim">see Risk screen</span>}>
+            <span className="text-[15px] text-muted">separate</span>
           </Stat>
           <Stat label="MAX POSITIONS" sub={<span className="text-dim">concurrent</span>}>
             <span className="tnum text-[15px] text-ink">{tier.maxConcurrentPositions}</span>

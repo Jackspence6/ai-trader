@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { NAV } from "@/lib/nav";
 import { utcClock } from "@/lib/format";
 import { useLive } from "@/lib/live";
@@ -21,27 +21,34 @@ import { cx, StatusDot } from "./ui";
  * confirm and re-arms after four seconds, so a misclick cannot halt the system
  * — but a deliberate halt is never more than two clicks away from anywhere.
  *
- * Today this flips the engine's `globalHalt` config flag, which the gate checks
- * ahead of every other rule. When the real engine exists this must also cancel
- * resting orders venue-side and trip the exchange dead-man's timers.
+ * Trips the real kill switch: halt state is set first, then resting orders are
+ * cancelled at every venue we hold a credential for. Two other paths do the
+ * same thing without a browser — `pnpm halt` and the standalone endpoint on
+ * port 3999 — because this one stops working exactly when the dashboard does.
  */
 function KillSwitch() {
   const [armed, setArmed] = useState(false);
   const [halted, setHalted] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((d: { config: EngineConfig }) => {
-        if (alive) setHalted(d.config.globalHalt);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
+  const load = useCallback(async () => {
+    try {
+      const d = (await fetch("/api/halt").then((r) => r.json())) as {
+        state: { halted: boolean };
+      };
+      setHalted(d.state.halted);
+    } catch {
+      // Leave the last known state showing rather than claiming "running" on a
+      // failed fetch — the wrong direction to guess.
+    }
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, [load]);
 
   useEffect(() => {
     if (!armed) return;
@@ -49,20 +56,15 @@ function KillSwitch() {
     return () => clearTimeout(t);
   }, [armed]);
 
-  async function toggle() {
+  async function send(action: "halt" | "resume", reason: string) {
     setBusy(true);
     try {
-      const current = await fetch("/api/config").then((r) => r.json());
-      const next = { ...current.config, globalHalt: !halted };
-      const res = await fetch("/api/config", {
+      await fetch("/api/halt", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
+        body: JSON.stringify({ action, reason }),
       });
-      const d = (await res.json()) as { config: EngineConfig };
-      setHalted(d.config.globalHalt);
-    } catch {
-      /* leave state unchanged; the indicator keeps showing the last known truth */
+      await load();
     } finally {
       setBusy(false);
       setArmed(false);
@@ -71,21 +73,22 @@ function KillSwitch() {
 
   if (halted) {
     return (
-      <button
-        onClick={toggle}
-        disabled={busy}
+      <Link
+        href="/risk"
         className="micro flex h-7 items-center gap-2 border border-down bg-down px-2.5 text-bg"
-        aria-label="Resume trading"
+        title="Trading is halted. Open the Risk screen to review and resume."
       >
         <span className="block size-1.5 bg-bg" />
-        {busy ? "···" : "HALTED · RESUME"}
-      </button>
+        HALTED
+      </Link>
     );
   }
 
   return (
     <button
-      onClick={() => (armed ? toggle() : setArmed(true))}
+      onClick={() =>
+        armed ? send("halt", "Manual halt from the dashboard header") : setArmed(true)
+      }
       disabled={busy}
       className={cx(
         "micro flex h-7 items-center gap-2 border px-2.5 transition-colors",
@@ -99,7 +102,7 @@ function KillSwitch() {
         className={cx("block size-1.5", armed ? "bg-bg" : "bg-down")}
         style={armed ? undefined : { animation: "pulse-dot 2.4s ease-in-out infinite" }}
       />
-      {armed ? "CONFIRM HALT" : "HALT"}
+      {busy ? "···" : armed ? "CONFIRM HALT" : "HALT"}
     </button>
   );
 }
@@ -193,9 +196,10 @@ function Rail() {
 }
 
 function EngineStatus() {
-  const { data } = useLive<{ config: EngineConfig }>("/api/config", 30_000);
-  const halted = data?.config.globalHalt ?? false;
-  const nav = data?.config.navUsd ?? 0;
+  const cfg = useLive<{ config: EngineConfig }>("/api/config", 30_000);
+  const haltState = useLive<{ state: { halted: boolean } }>("/api/halt", 15_000);
+  const halted = haltState.data?.state.halted ?? false;
+  const nav = cfg.data?.config.navUsd ?? 0;
 
   // With no linked accounts there is no live capital, so every strategy is in
   // shadow. Saying "running · shadow" is the truthful description of that.

@@ -12,7 +12,12 @@
     "test": "vitest run",
     "db:migrate": "tsx scripts/db.ts migrate",
     "db:import": "tsx scripts/db.ts import",
-    "db:status": "tsx scripts/db.ts status"
+    "db:status": "tsx scripts/db.ts status",
+    "halt": "tsx scripts/halt.ts halt",
+    "halt:status": "tsx scripts/halt.ts status",
+    "halt:resume": "tsx scripts/halt.ts resume",
+    "halt:deadman": "tsx scripts/halt.ts deadman",
+    "halt:server": "tsx scripts/halt-server.ts"
   },
   "dependencies": {
     "next": "16.2.10",

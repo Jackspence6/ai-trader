@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-21 · ~13,600 lines, 161 tests, 7 commits
+**Status:** 2026-07-21 · ~15,200 lines, 178 tests, 8 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -62,10 +62,10 @@ Without this the platform cannot trade at all. This is the biggest single block 
 | A4 | **OMS / order lifecycle** — submit, amend, cancel, reconcile against venue truth | The exchange is always the source of truth. Our state drifting from theirs is a halt-worthy event. | 4–5d |
 | A5 | **Position & PnL accounting** — realised/unrealised, fee and funding ledger, per-sleeve and per-strategy attribution | Sleeve isolation is currently theoretical: the limits exist, but nothing measures a sleeve's drawdown to trip them. | 3–4d |
 | A6 | **Continuous reconciliation** — computed vs venue-reported balances | Mismatch beyond tolerance halts trading. Without it we can be wrong for days without knowing. | 2d |
-| A7 | **Kill switch, for real** — cancel-all across venues, optional flatten, plus exchange-side dead-man timers | Today the HALT button flips a config flag. It must cancel resting orders venue-side and register auto-cancel-on-disconnect. | 2d |
+| ~~A7~~ | ~~**Kill switch, for real**~~ — **DONE.** Halt state in its own fail-safe file, venue cancel-all, exchange dead-man timers, three independent access paths. Verified halting with the dashboard killed. | The ability to stop must predate the ability to start. | ✅ |
 | ~~A8~~ | ~~**Market-data recorder**~~ — **DONE.** Quotes, funding and scan decisions to append-only JSONL, gzipped daily, PID-based liveness. Runs standalone via `pnpm record`. | Every day this is not running is training data we can never recover. Shipped first for exactly that reason. | ✅ |
 
-**Phase A remaining: ~13–16 days** (A1, A2, A8 done; A3 half done). At the end of it the system can trade — badly, with one strategy, unproven.
+**Phase A remaining: ~11–14 days** (A1, A2, A7, A8 done; A3 half done). At the end of it the system can trade — badly, with one strategy, unproven.
 
 ### Phase B · Proving the edge
 
@@ -166,7 +166,7 @@ In order, and the first item is not optional:
 1. ~~**A8 — the market-data recorder.**~~ **Done and running.** Recording quotes, funding and scan decisions.
 2. ~~**A1 — Postgres/Timescale.**~~ **Done.** Schema, migrations and an idempotent importer; the tier ladder now reads real NAV history.
 3. ~~**A2 + A3 — credentials and authenticated adapters**, read-only first.~~ **Done.** Vault enforces trade-only keys; balances are live once a key is added.
-4. **A7 — the real kill switch**, before the first order path exists. The ability to stop must predate the ability to start.
+4. ~~**A7 — the real kill switch**, before the first order path exists.~~ **Done.** Three access paths; verified working with the dashboard dead.
 5. **A4 + A5 — OMS and accounting.** Then, and only then, C1.
 
 Meanwhile the scanner keeps running in shadow and accumulating the evidence that decides whether step 5 is worth taking at all.

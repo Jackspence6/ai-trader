@@ -13,9 +13,14 @@ import { scan } from "@/lib/engine/scanner";
 import { readConfig } from "@/lib/engine/store";
 import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
 import { daysHeldAbove } from "@/lib/db/nav";
+import { readHalt } from "@/lib/killswitch";
 
 export async function GET() {
-  const [snapshot, config] = await Promise.all([fetchSnapshot(), readConfig()]);
+  const [snapshot, config, haltState] = await Promise.all([
+    fetchSnapshot(),
+    readConfig(),
+    readHalt(),
+  ]);
 
   // Funding history drives the regime-persistence filter. Fetched per asset in
   // parallel; a failure degrades that asset to "no regime claim" rather than
@@ -47,6 +52,7 @@ export async function GET() {
     snapshot,
     fundingHistory,
     daysHeldAboveThreshold,
+    halted: haltState.halted,
   });
 
   return Response.json(

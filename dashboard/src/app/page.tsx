@@ -34,6 +34,7 @@ export default function CommandCenter() {
   const cfg = useLive<{ config: EngineConfig }>("/api/config", 30_000);
   const markets = useLive<MarketSnapshot>("/api/markets", 15_000);
   const signals = useLive<SignalsResponse>("/api/signals", 25_000);
+  const halt = useLive<{ state: { halted: boolean } }>("/api/halt", 20_000);
 
   const config = cfg.data?.config ?? null;
   const nav = config?.navUsd ?? 0;
@@ -49,7 +50,7 @@ export default function CommandCenter() {
 
   return (
     <div className="space-y-3 p-3">
-      {!fund.funded && <UnfundedBanner halted={config?.globalHalt ?? false} />}
+      {!fund.funded && <UnfundedBanner halted={halt.data?.state.halted ?? false} />}
 
       {/* ------------------------------------------------------------ hero */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.55fr_1fr]">

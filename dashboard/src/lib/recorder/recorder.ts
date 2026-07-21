@@ -31,6 +31,7 @@ import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
 import { UNIVERSE } from "@/lib/market/types";
 import { scan } from "@/lib/engine/scanner";
 import { readConfig } from "@/lib/engine/store";
+import { readHalt } from "@/lib/killswitch/state";
 import { append, compactDay, dayKey, listDays } from "./store";
 import { clearHeartbeat, writeHeartbeat } from "./heartbeat";
 
@@ -141,7 +142,11 @@ export function createRecorder(opts: RecorderOptions = {}) {
 
   async function recordScan() {
     try {
-      const [snapshot, config] = await Promise.all([fetchSnapshot(), readConfig()]);
+      const [snapshot, config, haltState] = await Promise.all([
+        fetchSnapshot(),
+        readConfig(),
+        readHalt(),
+      ]);
 
       const histories = await Promise.allSettled(
         UNIVERSE.map((a) => fetchBinanceFundingHistory(a, config.fundingRegimeWindow)),
@@ -153,7 +158,12 @@ export function createRecorder(opts: RecorderOptions = {}) {
         }
       });
 
-      const opportunities = scan({ config, snapshot, fundingHistory });
+      const opportunities = scan({
+        config,
+        snapshot,
+        fundingHistory,
+        halted: haltState.halted,
+      });
       const n = await append("scan", opportunities, snapshot.asOf);
       stats.cycles.scan++;
       stats.rows.scan += n;

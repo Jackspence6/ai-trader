@@ -150,6 +150,12 @@ export type ScanContext = {
   snapshot: MarketSnapshot;
   /** Historical annualised funding per `${venue}:${asset}`, for regime checks. */
   fundingHistory?: Record<string, number[]>;
+  /**
+   * Whether trading is halted. Read from the kill switch's own state file by
+   * the caller, not from config — config can fail to parse, halt state must
+   * not.
+   */
+  halted?: boolean;
   /** Current tier id; NAV plus hold period resolve the effective one. */
   currentTierId?: TierId;
   daysHeldAboveThreshold?: number;
@@ -193,7 +199,10 @@ export function scan(ctx: ScanContext): ScoredOpportunity[] {
       ...scanCarry(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, ctx, portfolio),
     );
     out.push(
-      ...scanFundingSpread(asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, portfolio),
+      ...scanFundingSpread(
+        asset, quotes, notional, config, tier, dataAgeSeconds, degradedVenues, portfolio,
+        ctx.halted ?? false,
+      ),
     );
   }
 
@@ -283,7 +292,7 @@ function scanCarry(
       venueHealthy: !degraded.has(venue),
       dataAgeSeconds,
       maxDataAgeSeconds: config.maxDataAgeSeconds,
-      globalHalt: config.globalHalt,
+      globalHalt: ctx.halted ?? false,
       dailyLossLimitHit: false,
     });
 
@@ -343,6 +352,7 @@ function scanFundingSpread(
   dataAgeSeconds: number,
   degraded: Set<string>,
   portfolio: PortfolioState,
+  halted: boolean,
 ): ScoredOpportunity[] {
   const sleeve = sleeveContextFor("L2", portfolio);
   const perps = quotes.filter(
@@ -405,7 +415,7 @@ function scanFundingSpread(
     venueHealthy: !degraded.has(short.venue) && !degraded.has(long.venue),
     dataAgeSeconds,
     maxDataAgeSeconds: config.maxDataAgeSeconds,
-    globalHalt: config.globalHalt,
+    globalHalt: halted,
     dailyLossLimitHit: false,
   });
 

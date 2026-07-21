@@ -53,3 +53,6 @@ recorder.log
 
 # credential vault (encrypted, but never commit it)
 .data/credentials.json
+
+# kill-switch server log
+halt-server.log

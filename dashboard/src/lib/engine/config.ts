@@ -7,6 +7,11 @@
  *   - a bad configuration can be reverted to `DEFAULT_CONFIG` in one action,
  *   - and the scanner has no hidden constants buried in its logic.
  *
+ * Halt state deliberately does NOT live here. It moved to its own file
+ * (`lib/killswitch/state.ts`) with its own minimal reader, because this module
+ * validates, clamps and cross-checks — all of which can throw, and none of
+ * which should stand between an operator and stopping the system.
+ *
  * Every default below is chosen to be *conservative*. It is much cheaper to
  * loosen a threshold after seeing shadow-mode evidence than to discover a loose
  * one was quietly bleeding capital.
@@ -29,9 +34,6 @@ export type EngineConfig = {
    * invented capital is the single most dangerous kind of wrong.
    */
   navUsd: number;
-
-  /** Master switch. When true nothing may trade, for any reason. */
-  globalHalt: boolean;
 
   /**
    * Reference notional used to *score* opportunities while in shadow mode.
@@ -120,7 +122,6 @@ export type EngineConfig = {
 
 export const DEFAULT_CONFIG: EngineConfig = {
   navUsd: 0,
-  globalHalt: false,
   shadowNotionalUsd: 1_000,
 
   minNetEdgeBps: 15,
@@ -298,11 +299,6 @@ export function sanitiseConfig(input: unknown): {
   for (const key of Object.keys(DEFAULT_CONFIG) as (keyof EngineConfig)[]) {
     const raw = src[key];
     if (raw === undefined) continue;
-
-    if (key === "globalHalt") {
-      out.globalHalt = Boolean(raw);
-      continue;
-    }
 
     // Sleeves are a structured list, not a scalar — reconciled below once NAV
     // is known, since the allocation total is validated against it.
