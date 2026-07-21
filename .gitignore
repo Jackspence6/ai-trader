@@ -59,3 +59,7 @@ halt-server.log
 
 # paper trading book
 .data/paper/
+
+# runtime logs
+trade.log
+recorder.log
