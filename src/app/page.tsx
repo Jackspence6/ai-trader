@@ -12,7 +12,7 @@
 import Link from "next/link";
 import { useLive } from "@/lib/live";
 import { Money } from "@/lib/currency";
-import { computeFundState } from "@/lib/fund";
+import type { CapitalEvent } from "@/lib/fund/ledger";
 import { computePortfolio } from "@/lib/portfolio/sleeves";
 import { resolveTier } from "@/lib/calc/tiers";
 import { REJECTION_LABELS } from "@/lib/calc/gate";
@@ -21,6 +21,30 @@ import type { ScoredOpportunity } from "@/lib/engine/scanner";
 import type { MarketSnapshot, VenueError } from "@/lib/market/types";
 import { TierLadder } from "@/components/ladder";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+
+type FundResponse = {
+  nav: {
+    navUsd: number;
+    netContributedUsd: number;
+    navPerUnit: number;
+    unitsOutstanding: number;
+    returnPct: number | null;
+    funded: boolean;
+    nature: "simulated" | "real" | "mixed" | "none";
+  };
+  pnl: { totalUsd: number; realisedUsd: number; unrealisedUsd: number };
+  operators: {
+    id: string;
+    name: string;
+    initials: string;
+    colorVar: string;
+    units: number;
+    depositedUsd: number;
+    valueUsd: number;
+    share: number;
+  }[];
+  events: CapitalEvent[];
+};
 
 type SignalsResponse = {
   asOf: number;
@@ -32,13 +56,15 @@ type SignalsResponse = {
 
 export default function CommandCenter() {
   const cfg = useLive<{ config: EngineConfig }>("/api/config", 30_000);
+  const fundData = useLive<FundResponse>("/api/fund", 25_000);
   const markets = useLive<MarketSnapshot>("/api/markets", 15_000);
   const signals = useLive<SignalsResponse>("/api/signals", 25_000);
   const halt = useLive<{ state: { halted: boolean } }>("/api/halt", 20_000);
 
   const config = cfg.data?.config ?? null;
-  const nav = config?.navUsd ?? 0;
-  const fund = computeFundState(nav);
+  // NAV is derived from the capital ledger plus trading P&L, never from config.
+  const fund = fundData.data;
+  const nav = fund?.nav.navUsd ?? 0;
   const tier = resolveTier(nav, 0, "T0").current;
 
   const opps = signals.data?.opportunities ?? [];
@@ -50,7 +76,7 @@ export default function CommandCenter() {
 
   return (
     <div className="space-y-3 p-3">
-      {!fund.funded && <UnfundedBanner halted={halt.data?.state.halted ?? false} />}
+      {!fund?.nav.funded && <UnfundedBanner halted={halt.data?.state.halted ?? false} />}
 
       {/* ------------------------------------------------------------ hero */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.55fr_1fr]">
@@ -59,9 +85,9 @@ export default function CommandCenter() {
           hint="POOLED FUND · UNIT ACCOUNTED"
           right={
             <div className="flex items-center gap-1.5">
-              <Tag>{fund.unitsOutstanding.toFixed(2)} UNITS</Tag>
-              <Tag tone={fund.funded ? "accent" : "neutral"}>
-                NAV/UNIT {fund.navPerUnit.toFixed(4)}
+              <Tag>{(fund?.nav.unitsOutstanding ?? 0).toFixed(2)} UNITS</Tag>
+              <Tag tone={fund?.nav.funded ? "accent" : "neutral"}>
+                NAV/UNIT {(fund?.nav.navPerUnit ?? 1).toFixed(4)}
               </Tag>
             </div>
           }
@@ -69,21 +95,25 @@ export default function CommandCenter() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <span className="text-[34px] leading-none tracking-tight text-ink">
-                <Money usd={fund.navUsd} />
+                <Money usd={nav} />
               </span>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
                 <Micro>CONTRIBUTED</Micro>
                 <span className="text-muted">
-                  <Money usd={fund.totalContributedUsd} />
+                  <Money usd={fund?.nav.netContributedUsd ?? 0} />
                 </span>
                 <span className="text-dim">·</span>
                 <Micro>P&amp;L</Micro>
                 <span
                   className={cx(
-                    fund.pnlUsd > 0 ? "text-up" : fund.pnlUsd < 0 ? "text-down" : "text-muted",
+                    (fund?.pnl.totalUsd ?? 0) > 0
+                      ? "text-up"
+                      : (fund?.pnl.totalUsd ?? 0) < 0
+                        ? "text-down"
+                        : "text-muted",
                   )}
                 >
-                  <Money usd={fund.pnlUsd} sign />
+                  <Money usd={fund?.pnl.totalUsd ?? 0} sign />
                 </span>
               </div>
             </div>
@@ -108,19 +138,19 @@ export default function CommandCenter() {
         <div className="space-y-3">
           <Panel label="OPERATORS" hint="UNIT-ACCOUNTED OWNERSHIP">
             <ul className="space-y-3">
-              {fund.positions.map((p) => (
-                <li key={p.operator.id} className="flex items-center gap-3">
+              {(fund?.operators ?? []).map((p) => (
+                <li key={p.id} className="flex items-center gap-3">
                   <span
                     className="flex size-7 shrink-0 items-center justify-center border text-[10px]"
                     style={{
-                      borderColor: `color-mix(in oklab, var(${p.operator.colorVar}) 45%, transparent)`,
-                      color: `var(${p.operator.colorVar})`,
+                      borderColor: `color-mix(in oklab, var(${p.colorVar}) 45%, transparent)`,
+                      color: `var(${p.colorVar})`,
                     }}
                   >
-                    {p.operator.initials}
+                    {p.initials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] text-ink">{p.operator.name}</div>
+                    <div className="truncate text-[12.5px] text-ink">{p.name}</div>
                     <div className="micro text-dim">
                       {p.units.toFixed(2)} units · {(p.share * 100).toFixed(1)}%
                     </div>
@@ -130,7 +160,7 @@ export default function CommandCenter() {
                       <Money usd={p.valueUsd} />
                     </div>
                     <div className="micro text-dim">
-                      in <Money usd={p.contributedUsd} dp={0} />
+                      in <Money usd={p.depositedUsd} dp={0} />
                     </div>
                   </div>
                 </li>

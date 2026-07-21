@@ -14,13 +14,23 @@ import { readConfig } from "@/lib/engine/store";
 import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
 import { daysHeldAbove } from "@/lib/db/nav";
 import { readHalt } from "@/lib/killswitch";
+import { getNavUsd } from "@/lib/fund/nav";
 
 export async function GET() {
-  const [snapshot, config, haltState] = await Promise.all([
+  const [snapshot, storedConfig, haltState] = await Promise.all([
     fetchSnapshot(),
     readConfig(),
     readHalt(),
   ]);
+
+  // NAV comes from the ledger, never from stored config — one source, so the
+  // risk gate and the Treasury screen cannot disagree about how much money
+  // there is.
+  const prices = new Map<string, number>();
+  for (const q of snapshot.quotes) {
+    if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
+  }
+  const config = { ...storedConfig, navUsd: await getNavUsd(prices) };
 
   // Funding history drives the regime-persistence filter. Fetched per asset in
   // parallel; a failure degrades that asset to "no regime claim" rather than

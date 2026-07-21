@@ -29,8 +29,8 @@ type ConfigResponse = { config: EngineConfig; audit: AuditEntry[] };
 const GROUPS: { label: string; hint: string; fields: (keyof EngineConfig)[] }[] = [
   {
     label: "CAPITAL",
-    hint: "WHAT THE LADDER READS",
-    fields: ["navUsd", "shadowNotionalUsd"],
+    hint: "NAV IS DERIVED — SET IT VIA DEPOSITS ON TREASURY",
+    fields: ["shadowNotionalUsd"],
   },
   {
     label: "ECONOMICS",

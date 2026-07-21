@@ -17,7 +17,9 @@
     "halt:status": "tsx scripts/halt.ts status",
     "halt:resume": "tsx scripts/halt.ts resume",
     "halt:deadman": "tsx scripts/halt.ts deadman",
-    "halt:server": "tsx scripts/halt-server.ts"
+    "halt:server": "tsx scripts/halt-server.ts",
+    "trade": "tsx scripts/trade.ts",
+    "trade:once": "tsx scripts/trade.ts --once"
   },
   "dependencies": {
     "next": "16.2.10",

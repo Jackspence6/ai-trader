@@ -45,20 +45,27 @@ const BAND_LABEL: Record<RiskBand, string> = {
 
 export default function AllocationPage() {
   const [saved, setSaved] = useState<EngineConfig | null>(null);
+  // NAV is derived from the capital ledger — read-only here. Change it by
+  // recording a deposit or withdrawal on Treasury.
   const [nav, setNav] = useState(0);
   const [draft, setDraft] = useState<SleeveAllocation[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((d: { config: EngineConfig }) => {
-        setSaved(d.config);
-        setNav(d.config.navUsd);
-        setDraft(d.config.sleeves);
-      })
-      .catch(() => setNote("Could not load configuration"));
+    void (async () => {
+      try {
+        const [cfg, fund] = await Promise.all([
+          fetch("/api/config").then((r) => r.json()) as Promise<{ config: EngineConfig }>,
+          fetch("/api/fund").then((r) => r.json()) as Promise<{ nav: { navUsd: number } }>,
+        ]);
+        setSaved(cfg.config);
+        setDraft(cfg.config.sleeves);
+        setNav(fund.nav.navUsd);
+      } catch {
+        setNote("Could not load configuration");
+      }
+    })();
   }, []);
 
   const portfolio = useMemo(
@@ -68,7 +75,6 @@ export default function AllocationPage() {
 
   const dirty = useMemo(() => {
     if (!saved || !draft) return false;
-    if (saved.navUsd !== nav) return true;
     return SLEEVES.some((s) => {
       const a = saved.sleeves.find((x) => x.sleeveId === s.id);
       const b = draft.find((x) => x.sleeveId === s.id);
@@ -78,7 +84,7 @@ export default function AllocationPage() {
         a?.halted !== b?.halted
       );
     });
-  }, [saved, draft, nav]);
+  }, [saved, draft]);
 
   async function save() {
     if (!draft || !saved) return;
@@ -88,11 +94,10 @@ export default function AllocationPage() {
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...saved, navUsd: nav, sleeves: draft }),
+        body: JSON.stringify({ ...saved, sleeves: draft }),
       });
       const d = (await res.json()) as { config: EngineConfig; adjustments: string[] };
       setSaved(d.config);
-      setNav(d.config.navUsd);
       setDraft(d.config.sleeves);
       setNote(
         d.adjustments.length > 0
@@ -127,10 +132,7 @@ export default function AllocationPage() {
             {portfolio.overAllocated && <Tag tone="down">OVER-ALLOCATED</Tag>}
             {dirty && <Tag tone="warn">UNSAVED</Tag>}
             <button
-              onClick={() => {
-                setDraft(saved.sleeves);
-                setNav(saved.navUsd);
-              }}
+              onClick={() => setDraft(saved.sleeves)}
               disabled={!dirty || busy}
               className="micro border border-line-bright px-2 py-1 text-muted transition-colors hover:text-ink disabled:opacity-40"
             >
@@ -147,23 +149,16 @@ export default function AllocationPage() {
         }
       >
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-5">
-          <div>
-            <Micro className="mb-1.5">NET ASSET VALUE</Micro>
-            <input
-              type="number"
-              min={0}
-              step={100}
-              value={Number(nav.toFixed(2))}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n) && n >= 0) setNav(n);
-              }}
-              className="tnum w-full border border-line-bright bg-raised/60 px-2 py-1.5 text-[15px] text-ink outline-none focus:border-accent/50"
-            />
-            <div className="mt-1.5 text-[11px] text-dim">
-              <Money usd={nav} />
-            </div>
-          </div>
+          <Stat
+            label="NET ASSET VALUE"
+            sub={
+              <a href="/treasury" className="text-accent hover:underline">
+                set via Treasury →
+              </a>
+            }
+          >
+            <Money usd={nav} />
+          </Stat>
 
           <Stat label="ALLOCATED" sub={<span className="text-dim">across sleeves</span>}>
             <span className={cx(portfolio.overAllocated && "text-down")}>

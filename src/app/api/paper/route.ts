@@ -11,6 +11,7 @@ import { UNIVERSE } from "@/lib/market/types";
 import { scan } from "@/lib/engine/scanner";
 import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
+import { getNavUsd } from "@/lib/fund/nav";
 import { daysHeldAbove } from "@/lib/db/nav";
 import { tierForNav } from "@/lib/calc/tiers";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
@@ -44,11 +45,18 @@ export async function POST(request: Request) {
     return Response.json({ reset: true }, { headers: { "cache-control": "no-store" } });
   }
 
-  const [snapshot, config, halt] = await Promise.all([
+  const [snapshot, storedConfig, halt] = await Promise.all([
     fetchSnapshot(),
     readConfig(),
     readHalt(),
   ]);
+
+  const prices = new Map<string, number>();
+  for (const q of snapshot.quotes) {
+    if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
+  }
+  // Derived NAV, so paper sizing compounds with the book exactly as live would.
+  const config = { ...storedConfig, navUsd: await getNavUsd(prices) };
 
   let daysHeldAboveThreshold = 0;
   try {
@@ -77,11 +85,6 @@ export async function POST(request: Request) {
 
   const venue = new SimulatedVenue();
   venue.setBooks(booksFromQuotes(snapshot.quotes));
-
-  const prices = new Map<string, number>();
-  for (const q of snapshot.quotes) {
-    if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
-  }
 
   const existingFills = await readFills();
 

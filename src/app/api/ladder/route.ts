@@ -12,12 +12,11 @@
  */
 
 import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
-import { readConfig } from "@/lib/engine/store";
+import { getNavUsd } from "@/lib/fund/nav";
 import { effectiveTier, ladderEvidence, navByDay } from "@/lib/db/nav";
 
 export async function GET() {
-  const config = await readConfig();
-  const nav = config.navUsd;
+  const nav = await getNavUsd();
   const implied = tierForNav(nav);
 
   try {

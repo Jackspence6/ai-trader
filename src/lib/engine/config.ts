@@ -27,11 +27,14 @@ export type EngineConfig = {
   /* -------------------------------------------------- capital & operation */
 
   /**
-   * Live NAV in USD.
+   * NAV is NOT stored here.
    *
-   * Zero until real exchange accounts are linked — and it stays zero rather
-   * than being seeded with a plausible number. A trading dashboard showing
-   * invented capital is the single most dangerous kind of wrong.
+   * It is derived from the capital ledger plus trading P&L
+   * (`lib/fund/nav.ts`), because a NAV you type cannot compound, never moves on
+   * its own, and quietly decouples from what the book is worth. This field
+   * remains only so that callers threading a resolved NAV through the scanner
+   * have somewhere to put it — it is overwritten on every read and must never
+   * be treated as authoritative.
    */
   navUsd: number;
 
@@ -148,14 +151,6 @@ export const CONFIG_BOUNDS: Record<
   string,
   { min: number; max: number; step: number; unit: string; label: string; help: string }
 > = {
-  navUsd: {
-    min: 0,
-    max: 10_000_000,
-    step: 100,
-    unit: "$",
-    label: "Net asset value",
-    help: "Live capital under management. Zero until exchange accounts are linked — the tier ladder reads this on every decision.",
-  },
   shadowNotionalUsd: {
     min: 10,
     max: 1_000_000,
