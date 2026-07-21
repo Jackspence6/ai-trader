@@ -287,6 +287,12 @@ function TopBar() {
 /* ----------------------------------------------------------------- Shell */
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const path = usePathname();
+
+  // The lock screen is the front door, not a page inside the terminal — it
+  // gets no nav rail, no top bar, and no kill switch.
+  if (path === "/login") return <>{children}</>;
+
   return (
     <div className="relative z-10 flex h-dvh overflow-hidden">
       <Rail />
