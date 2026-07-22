@@ -74,6 +74,23 @@ type ForexResponse = {
   engagedTrendCount: number;
 };
 
+type BasisSignal = {
+  asset: string;
+  futureSymbol: string;
+  expiryMs: number;
+  spot: number;
+  future: number;
+  result: {
+    basisPct: number;
+    daysToExpiry: number;
+    annualisedBasisApr: number;
+    direction: "cash-and-carry" | "reverse-carry" | "none";
+    netEdgeBps: number;
+    viable: boolean;
+  };
+};
+type BasisResponse = { signals: BasisSignal[]; viableCount: number };
+
 /* ------------------------------------------------------- asset-class identity */
 
 const CLASS: Record<FundAccount, { text: string; border: string; bg: string; dot: string }> = {
@@ -88,6 +105,7 @@ export default function CommandCenter() {
   const markets = useLive<MarketSnapshot>("/api/markets", 15_000);
   const signals = useLive<SignalsResponse>("/api/signals", 25_000);
   const forex = useLive<ForexResponse>("/api/forex", 60_000);
+  const basis = useLive<BasisResponse>("/api/basis", 60_000);
   const halt = useLive<{ state: { halted: boolean } }>("/api/halt", 20_000);
 
   const fund = fundData.data;
@@ -233,6 +251,8 @@ export default function CommandCenter() {
         <CryptoSignals opps={cryptoOpps} connecting={signals.status === "connecting"} />
         <ForexSignals signals={fxSignals} connecting={forex.status === "connecting"} />
       </div>
+
+      <BasisPanel signals={basis.data?.signals ?? []} connecting={basis.status === "connecting"} />
 
       {/* ==================================================== market + health */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
@@ -533,6 +553,76 @@ function ForexSignals({ signals, connecting }: { signals: FxSignal[]; connecting
                     <span className="tnum text-dim">
                       {s.trend.annualisedVol !== null ? `${(s.trend.annualisedVol * 100).toFixed(0)}%` : "—"}
                     </span>
+                  </SigTd>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* --------------------------------------------------------------- basis panel */
+
+function BasisPanel({ signals, connecting }: { signals: BasisSignal[]; connecting: boolean }) {
+  return (
+    <Panel
+      label="CASH & CARRY BASIS"
+      hint="SPOT vs QUARTERLY FUTURE · CONVERGES AT EXPIRY"
+      right={<Tag tone="accent">SCORED · EXECUTION NEXT</Tag>}
+      flush
+    >
+      {signals.length === 0 ? (
+        <div className="p-4 text-[12px] text-dim">
+          {connecting ? "Reading dated futures…" : "No quarterly futures basis available right now."}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-line">
+                <SigTh>ASSET</SigTh>
+                <SigTh>EXPIRY</SigTh>
+                <SigTh right>DAYS</SigTh>
+                <SigTh right>BASIS</SigTh>
+                <SigTh right>ANNUALISED</SigTh>
+                <SigTh right>NET EDGE</SigTh>
+                <SigTh>TRADE</SigTh>
+              </tr>
+            </thead>
+            <tbody>
+              {signals.map((s) => (
+                <tr key={s.futureSymbol} className="border-b border-line/60">
+                  <SigTd><span className="text-ink">{s.asset}</span></SigTd>
+                  <SigTd>
+                    <span className="tnum text-dim">
+                      {new Date(s.expiryMs).toISOString().slice(0, 10)}
+                    </span>
+                  </SigTd>
+                  <SigTd right><span className="tnum text-dim">{s.result.daysToExpiry.toFixed(0)}</span></SigTd>
+                  <SigTd right>
+                    <span className={cx("tnum", s.result.basisPct >= 0 ? "text-up" : "text-down")}>
+                      {s.result.basisPct >= 0 ? "+" : ""}{(s.result.basisPct * 100).toFixed(2)}%
+                    </span>
+                  </SigTd>
+                  <SigTd right>
+                    <span className={cx("tnum", s.result.annualisedBasisApr >= 0 ? "text-up" : "text-down")}>
+                      {(s.result.annualisedBasisApr * 100).toFixed(1)}%
+                    </span>
+                  </SigTd>
+                  <SigTd right>
+                    <span className={cx("tnum", s.result.netEdgeBps > 0 ? "text-up" : "text-dim")}>
+                      {s.result.netEdgeBps > 0 ? "+" : ""}{s.result.netEdgeBps.toFixed(1)}bp
+                    </span>
+                  </SigTd>
+                  <SigTd>
+                    {s.result.viable ? (
+                      <Tag tone="up">{s.result.direction === "cash-and-carry" ? "BUY SPOT / SHORT FUT" : "SHORT SPOT / LONG FUT"}</Tag>
+                    ) : (
+                      <span className="text-dim">edge below cost</span>
+                    )}
                   </SigTd>
                 </tr>
               ))}

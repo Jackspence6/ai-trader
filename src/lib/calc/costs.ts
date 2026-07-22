@@ -79,6 +79,13 @@ export const DEFAULT_VENUE_FEES: Record<string, VenueFees> = {
     minNotionalUsd: { spot: 10, perp: 10 },
     cheapestTransferUsd: 1.0,
   },
+  okx: {
+    venue: "OKX",
+    spot: { makerBps: 8, takerBps: 10 },
+    perp: { makerBps: 2, takerBps: 5 },
+    minNotionalUsd: { spot: 5, perp: 5 },
+    cheapestTransferUsd: 1.0,
+  },
   // Spot forex at a competitive retail/ECN broker. The visible commission is
   // small — the real cost is the bid/ask spread, which is modelled per pair in
   // the FX book, not here. Min notional reflects that brokers deal in micro

@@ -49,15 +49,24 @@ number of genuinely different edges.
 
 ### Tier A — do these next (high fit, low risk, real ROI)
 
-**A1 · More perp venues (OKX, Gate, KuCoin, Bitget).**
-The single highest-ROI change. L2 (cross-venue funding spread) gets *wider and
+**A1 · More perp venues (OKX, Gate, KuCoin, Bitget). — OKX DONE.**
+The single highest-ROI change. **OKX is now live** as a fourth venue (spot +
+swap, funding, contract-value depth), so L1 and L2 already span four venues —
+about a third of scored opportunities now involve OKX, including new
+cross-venue spreads its divergent funding opens up. Gate/KuCoin are the same
+adapter shape when we want more. L2 (cross-venue funding spread) gets *wider and
 more frequent* with every venue added, because the widest spreads sit between a
 mainstream venue and an alt-heavy one. OKX and Gate routinely show funding
 extremes on alts that Binance/Bybit don't. Pure data integration — no new
 strategy, no new risk model, it just deepens a book that already works.
 *Edge: medium-high · Risk: low · Effort: medium (one adapter per venue).*
 
-**A2 · Cash-and-carry basis (spot vs dated future).**
+**A2 · Cash-and-carry basis (spot vs dated future). — SCORED LIVE.**
+Now computed on real Binance quarterly futures (BTC/ETH) and surfaced on the
+Command Center: annualised basis, net-of-cost edge, and the trade direction per
+expiry. BTC currently clears; ETH doesn't. Execution is the deliberate next
+step — a dated future is a new instrument (its own expiry, no funding, its own
+mark), which goes into the order path carefully rather than rushed.
 Buy spot, short the **quarterly** future when it trades above spot, and collect
 the annualised basis, which converges to zero at expiry — a near-deterministic
 payoff, often richer and steadier than perp funding. Binance and OKX list dated

@@ -345,12 +345,141 @@ export async function fetchHyperliquid(): Promise<Quote[]> {
   return out;
 }
 
+/* --------------------------------------------------------------------- OKX */
+
+type OkxTicker = {
+  instId: string;
+  last: string;
+  askPx: string;
+  askSz: string;
+  bidPx: string;
+  bidSz: string;
+  open24h: string;
+  high24h: string;
+  low24h: string;
+  volCcy24h: string;
+};
+
+type OkxInstrument = { instId: string; ctVal: string; ctValCcy: string };
+type OkxFunding = { instId: string; fundingRate: string; nextFundingTime: string };
+type OkxEnvelope<T> = { code: string; msg: string; data: T[] };
+
+async function okx<T>(url: string): Promise<T[]> {
+  const d = await getJson<OkxEnvelope<T>>(url);
+  // OKX signals failure with a non-"0" code and a 200 status, so the HTTP check
+  // in getJson is not enough on its own.
+  if (d.code !== "0") throw new Error(d.msg || `OKX code ${d.code}`);
+  return d.data;
+}
+
+/**
+ * OKX — a fourth venue, added to widen the carry book.
+ *
+ * More venues is the highest-ROI expansion for this system: the cross-venue
+ * funding spread (L2) gets wider and more frequent with every venue, because
+ * the widest spreads sit between a mainstream venue and one that runs hotter on
+ * alts. OKX is deep, liquid, and its funding regularly diverges from
+ * Binance/Bybit — exactly the divergence L2 monetises.
+ *
+ * Two OKX-specific traps handled here:
+ *   - Swap size (bidSz/askSz) is in CONTRACTS, not base units. Converting to USD
+ *     depth needs each contract's value (`ctVal`), fetched from the instruments
+ *     endpoint. Skipping it would misstate book depth by the contract multiplier.
+ *   - Funding is not on the ticker; it is a per-instrument call. Each is made
+ *     resilient so one missing funding rate does not sink the whole venue.
+ */
+export async function fetchOKX(): Promise<Quote[]> {
+  const spotWanted = new Set(UNIVERSE.map((a) => `${a}-USDT`));
+  const swapWanted = new Set(UNIVERSE.map((a) => `${a}-USDT-SWAP`));
+
+  const [spot, swap, instruments, ...fundings] = await Promise.all([
+    okx<OkxTicker>("https://www.okx.com/api/v5/market/tickers?instType=SPOT"),
+    okx<OkxTicker>("https://www.okx.com/api/v5/market/tickers?instType=SWAP"),
+    okx<OkxInstrument>("https://www.okx.com/api/v5/public/instruments?instType=SWAP"),
+    ...UNIVERSE.map((a) =>
+      okx<OkxFunding>(
+        `https://www.okx.com/api/v5/public/funding-rate?instId=${a}-USDT-SWAP`,
+      ).catch(() => [] as OkxFunding[]),
+    ),
+  ]);
+
+  const ctValByInst = new Map(instruments.map((i) => [i.instId, num(i.ctVal)]));
+  const fundingByInst = new Map<string, OkxFunding>();
+  for (const f of fundings) if (f[0]) fundingByInst.set(f[0].instId, f[0]);
+
+  const now = Date.now();
+  const out: Quote[] = [];
+
+  for (const t of spot) {
+    if (!spotWanted.has(t.instId)) continue;
+    const bid = num(t.bidPx);
+    const ask = num(t.askPx);
+    const open = num(t.open24h);
+    const last = num(t.last);
+    out.push({
+      venue: "OKX",
+      asset: t.instId.replace(/-USDT$/, ""),
+      kind: "spot",
+      last,
+      bid,
+      ask,
+      spreadBps: spreadBpsOf(bid, ask),
+      // Spot sizes are in base units, so this is a genuine USD figure.
+      topOfBookUsd: num(t.bidSz) * bid + num(t.askSz) * ask,
+      high24h: num(t.high24h),
+      low24h: num(t.low24h),
+      change24hPct: open > 0 ? (last / open - 1) * 100 : 0,
+      volume24hUsd: num(t.volCcy24h),
+      ts: now,
+    });
+  }
+
+  for (const t of swap) {
+    if (!swapWanted.has(t.instId)) continue;
+    const bid = num(t.bidPx);
+    const ask = num(t.askPx);
+    const open = num(t.open24h);
+    const last = num(t.last);
+    // Swap sizes are in contracts; multiply by the contract value to get base
+    // units, then by price for USD. Unknown ctVal → 0 depth, which makes the
+    // cost model charge its punitive unknown-depth estimate rather than invent.
+    const ctVal = ctValByInst.get(t.instId) ?? 0;
+    const f = fundingByInst.get(t.instId);
+    const rate = f ? num(f.fundingRate) : undefined;
+    // OKX funding settles every 8 hours.
+    const intervalHours = 8;
+
+    out.push({
+      venue: "OKX",
+      asset: t.instId.replace(/-USDT-SWAP$/, ""),
+      kind: "perp",
+      last,
+      bid,
+      ask,
+      spreadBps: spreadBpsOf(bid, ask),
+      topOfBookUsd: ctVal > 0 ? (num(t.bidSz) * bid + num(t.askSz) * ask) * ctVal : 0,
+      high24h: num(t.high24h),
+      low24h: num(t.low24h),
+      change24hPct: open > 0 ? (last / open - 1) * 100 : 0,
+      volume24hUsd: num(t.volCcy24h),
+      fundingRate: rate,
+      fundingIntervalHours: rate === undefined ? undefined : intervalHours,
+      fundingApr: rate === undefined ? undefined : annualiseFunding(rate, intervalHours),
+      nextFundingMs: f?.nextFundingTime ? num(f.nextFundingTime) : undefined,
+      ts: now,
+    });
+  }
+
+  return out;
+}
+
 /* ----------------------------------------------------------------- Snapshot */
 
 const ADAPTERS: { venue: string; fn: () => Promise<Quote[]> }[] = [
   { venue: "Binance", fn: fetchBinance },
   { venue: "Bybit", fn: fetchBybit },
   { venue: "Hyperliquid", fn: fetchHyperliquid },
+  { venue: "OKX", fn: fetchOKX },
 ];
 
 /**
