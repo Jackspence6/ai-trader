@@ -56,6 +56,19 @@ A conversion is never "unavailable". Live ECB fix when the provider answers, the
 
 The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation.
 
+### Position exits — the trading loop closes (`src/lib/oms/exits.ts`)
+
+The scanner opened trades; now they close. Each pass, before new entries, every
+open trade is checked against the reason it was put on: a funding carry closes
+when funding turns negative, a cross-venue spread when the spread inverts, an FX
+carry when the net-of-swap differential goes negative, and any trade on a stop
+if it is down past a backstop. Exits are evaluated per **trade**, not per leg —
+a carry closes both legs together or neither, so a hedge is never left half-on
+as a naked position. Verified live: a spread whose edge disappeared closed both
+legs, realised the round-trip, and freed the slot for a fresh opportunity in the
+same pass. This is what turns the system from "open and hold forever" into a
+managed book whose P&L reflects a real strategy.
+
 ### Forex execution — the forex account trades (`src/lib/engine/forexscan.ts`, `src/lib/oms/fxcarry.ts`)
 
 **F1 carry now paper-trades through the same engine as crypto.** FX carry opportunities are scored, gated and executed against a simulated FX venue (single spot leg, per-pair spread modelled and paid), and the interest differential accrues as a `FundingPayment` — the same mechanism crypto funding uses, with the direction and swap cost handled honestly (a decayed carry accrues negative). Positions attribute to the forex account by sleeve asset class, and the tier's concurrent-position budget is now spent **per account** so a crypto trade never starves a forex one. Verified live against Neon: an F1 USD/JPY carry executes into the forex book and accrues carry the next pass. FX carry is held over its own quarter-long horizon, not the crypto funding hold — the carry is a slow, months-long trade.

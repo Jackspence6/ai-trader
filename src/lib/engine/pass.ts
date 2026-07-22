@@ -23,9 +23,11 @@ import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
 import { daysHeldAbove } from "@/lib/db/nav";
 import { getFundState } from "@/lib/fund/nav";
-import { buildPositions } from "@/lib/portfolio/positions";
+import { buildPositions, markPositions, type Fill } from "@/lib/portfolio/positions";
 import { accrueFxCarry } from "@/lib/oms/fxcarry";
+import { evaluateExits } from "@/lib/oms/exits";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
+import { newIntentId, type Order } from "@/lib/oms/types";
 import { edgeAccuracy, runPaperPass } from "@/lib/oms/paper";
 import {
   readFills,
@@ -75,6 +77,80 @@ async function accrueCarry(
   await writeJson(FX_CARRY_ACCRUAL_KEY, now);
 }
 
+/**
+ * Close every open trade whose thesis has broken.
+ *
+ * A trade is closed as a whole or not at all: if any leg cannot close (e.g. it
+ * would fall below the venue minimum), none of that trade's closing fills are
+ * recorded, so it stays intact and is retried next pass rather than left as a
+ * naked half-position.
+ */
+async function processExits(
+  venue: SimulatedVenue,
+  fills: Fill[],
+  funding: Awaited<ReturnType<typeof readFundingPayments>>,
+  prices: Map<string, number>,
+  snapshot: Awaited<ReturnType<typeof fetchSnapshot>>,
+  fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
+): Promise<{ fills: Fill[]; orders: Order[]; reasons: Record<string, number> }> {
+  const marked = markPositions(buildPositions(fills, funding), prices);
+
+  const fundingMap = new Map<string, number>();
+  for (const q of snapshot.quotes) {
+    if (q.kind === "perp" && q.fundingApr !== undefined) {
+      fundingMap.set(`${q.venue}:${q.asset}`, q.fundingApr);
+    }
+  }
+  const fxPairs = new Map(fxQuotes.map((q) => [q.symbol, { base: q.base, quote: q.quote }]));
+
+  const plans = evaluateExits(marked, {
+    fundingApr: (v, a) => fundingMap.get(`${v}:${a}`),
+    fxPair: (s) => fxPairs.get(s),
+  });
+
+  const outFills: Fill[] = [];
+  const outOrders: Order[] = [];
+  const reasons: Record<string, number> = {};
+
+  for (const plan of plans) {
+    const planFills: Fill[] = [];
+    const planOrders: Order[] = [];
+    let closedAll = true;
+
+    for (const leg of plan.legs) {
+      const res = await venue.submit({
+        id: newIntentId(),
+        ts: Date.now(),
+        venue: String(leg.venue),
+        asset: leg.asset,
+        market: leg.market,
+        side: leg.qty > 0 ? "sell" : "buy",
+        qty: Math.abs(leg.qty),
+        type: "market",
+        timeInForce: "IOC",
+        sleeveId: leg.sleeveId,
+        strategy: "exit",
+        rationale: `Exit (${plan.reason}): ${plan.detail}`,
+        reduceOnly: true,
+      });
+      if (res.ok) {
+        planFills.push(...res.fills);
+        planOrders.push(res.order);
+      } else {
+        closedAll = false;
+      }
+    }
+
+    if (closedAll && planFills.length > 0) {
+      outFills.push(...planFills);
+      outOrders.push(...planOrders);
+      reasons[plan.reason] = (reasons[plan.reason] ?? 0) + 1;
+    }
+  }
+
+  return { fills: outFills, orders: outOrders, reasons };
+}
+
 export type TradePassRecord = {
   ts: number;
   navBefore: number;
@@ -89,6 +165,9 @@ export type TradePassRecord = {
   scored: number;
   executed: number;
   rejected: number;
+  /** Trades closed this pass by the exit manager, and why. */
+  closed: number;
+  exits: Record<string, number>;
   openPositions: number;
   accuracy: ReturnType<typeof edgeAccuracy>;
   rejections: Record<string, number>;
@@ -137,6 +216,8 @@ export async function runTradingPass(): Promise<PassOutcome> {
       scored: 0,
       executed: 0,
       rejected: 0,
+      closed: 0,
+      exits: {},
       openPositions: fund.openPositions,
       accuracy: [],
       rejections: {},
@@ -200,6 +281,13 @@ export async function runTradingPass(): Promise<PassOutcome> {
   const venue = new SimulatedVenue();
   venue.setBooks([...booksFromQuotes(snapshot.quotes), ...fxBooks(fxQuotes)]);
 
+  // Close first, open second. A trade whose thesis has broken — funding
+  // inverted, FX carry decayed, or a stop breached — is closed before new
+  // entries are considered, so the freed position slot and capital are
+  // available to the same pass rather than a later one.
+  const exit = await processExits(venue, existingFills, fundingBefore, prices, snapshot, fxQuotes);
+  if (exit.orders.length > 0) await recordOrders(exit.orders);
+
   const result = await runPaperPass({
     config,
     opportunities,
@@ -208,12 +296,16 @@ export async function runTradingPass(): Promise<PassOutcome> {
     halted: false,
     dataAgeSeconds,
     daysHeldAboveThreshold,
-    existingFills,
+    // Entries see the book AFTER exits — the closing fills are part of the state.
+    existingFills: [...existingFills, ...exit.fills],
     funding: fundingBefore,
   });
 
   const orders = result.decisions.flatMap((d) => (d.executed ? d.orders : []));
-  await Promise.all([recordOrders(orders), recordFills(result.fills)]);
+  await Promise.all([
+    recordOrders(orders),
+    recordFills([...exit.fills, ...result.fills]),
+  ]);
 
   const after = await getFundState(prices);
 
@@ -225,6 +317,8 @@ export async function runTradingPass(): Promise<PassOutcome> {
     scored: opportunities.length,
     executed: result.executed,
     rejected: result.rejected,
+    closed: Object.values(exit.reasons).reduce((a, n) => a + n, 0),
+    exits: exit.reasons,
     openPositions: after.openPositions,
     accuracy: edgeAccuracy(result.decisions),
     rejections: result.decisions
@@ -258,7 +352,7 @@ export async function runTradingPass(): Promise<PassOutcome> {
     record,
     summary:
       `scored ${record.scored} · executed ${record.executed} · ` +
-      `open ${record.openPositions} · NAV $${after.navUsd.toFixed(2)} ` +
-      `(${delta >= 0 ? "+" : ""}${delta.toFixed(4)})`,
+      `closed ${record.closed} · open ${record.openPositions} · ` +
+      `NAV $${after.navUsd.toFixed(2)} (${delta >= 0 ? "+" : ""}${delta.toFixed(4)})`,
   };
 }
