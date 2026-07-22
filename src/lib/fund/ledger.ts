@@ -2,54 +2,92 @@
  * Capital ledger — deposits, withdrawals, and the NAV they imply.
  *
  * The fund is wholly owned by Musket Goose. There are no fractional stakes and
- * no members, so this ledger tracks **one balance**, not a cap table.
+ * no members, so this ledger tracks **balances**, not a cap table.
+ *
+ * **Two accounts.** Capital is split into a `crypto` book and a `forex` book,
+ * because the two asset classes have completely different risk and the whole
+ * point of holding both is to keep them separable — you want to see what each
+ * is doing on its own, and fund them independently. Each account has its own
+ * balance and its own NAV. A sleeve draws from the account matching its asset
+ * class (`lib/portfolio/sleeves.ts`).
  *
  * **NAV is derived, never typed:**
  *
  *     NAV = (deposits − withdrawals) + realised + unrealised + funding − fees
  *
  * Every term comes from a recorded event or a replayed fill, so if the number
- * moves, something happened and you can find out what. A hand-set NAV cannot
- * compound and quietly decouples from what the book is worth.
+ * moves, something happened and you can find out what.
  *
- * **The performance index** is the one piece kept from the unit model. Units
- * change only when capital moves, so NAV-per-unit isolates trading performance
- * from deposits — it is a time-weighted return. Without it, adding $5,000 looks
- * identical to earning $5,000 on the balance alone, which is the single most
- * misleading thing a fund balance can do.
+ * **Deposits can be made in ZAR.** The operator funds in rands; the ledger
+ * converts at the live rate *at the moment of deposit* and stores USD as the
+ * canonical amount, while keeping the original ZAR figure and the rate used for
+ * audit. USD is canonical because that is what the venues settle in — storing
+ * ZAR would make every historical balance move whenever the rand moved, and we
+ * would lose the ability to tell trading performance apart from currency drift.
  *
- * **Simulated vs real is a property of each event**, not a global mode, and the
- * two cannot be mixed. A blended ledger produces a track record where you can
- * no longer say which returns were earned with money at risk — which is exactly
- * what paper trading exists to establish.
+ * **The performance index** is kept from the unit model: units change only when
+ * capital moves, so NAV-per-unit isolates trading performance from deposits. It
+ * is a time-weighted return, per account.
  */
 
 import { appendLog, readLog } from "@/lib/store/kv";
 
 export const CAPITAL_LOG = "capital_events";
 
+/** The two books capital is split across. */
+export type FundAccount = "crypto" | "forex";
+
+export const FUND_ACCOUNTS: { id: FundAccount; label: string; note: string }[] = [
+  {
+    id: "crypto",
+    label: "Crypto",
+    note: "High-volatility book — funding carry, spot accumulation, trend, dislocations.",
+  },
+  {
+    id: "forex",
+    label: "Forex",
+    note: "Low-volatility, uncorrelated book — currency carry and trend. Steadies the whole.",
+  },
+];
+
 export type CapitalNature = "simulated" | "real";
+
+/** What was actually handed over, before conversion. Present on ZAR deposits. */
+export type OriginalContribution = {
+  currency: string;
+  amount: number;
+  /** USD per 1 unit of `currency` at the time — i.e. amount × rate = USD… no. */
+  usdPerUnit: number;
+};
 
 export type CapitalEvent = {
   id: string;
   ts: number;
+  /** Which book this moves. */
+  account: FundAccount;
   type: "deposit" | "withdrawal";
-  /** Always positive; direction comes from `type`. */
+  /** Canonical amount in USD, always positive. */
   amountUsd: number;
   nature: CapitalNature;
-  /** Index level at the time, which is what the unit maths prices against. */
+  /** The original currency/amount when funded in something other than USD. */
+  original: OriginalContribution | null;
+  /** Index level at the time — what the unit maths prices against. */
   navPerUnitAtEvent: number;
   /** Change in the notional unit count. Drives the performance index only. */
   unitsDelta: number;
   note: string | null;
 };
 
-/** The performance index starts at 1.0000, so it reads directly as a multiple. */
 export const INITIAL_NAV_PER_UNIT = 1;
 
 export async function readCapitalEvents(): Promise<CapitalEvent[]> {
   try {
-    return (await readLog<CapitalEvent>(CAPITAL_LOG)).sort((a, b) => a.ts - b.ts);
+    const events = await readLog<CapitalEvent>(CAPITAL_LOG);
+    // Defensive: any legacy event without an account is treated as crypto, so
+    // an old record can never silently vanish from the totals.
+    return events
+      .map((e) => ({ ...e, account: (e.account ?? "crypto") as FundAccount }))
+      .sort((a, b) => a.ts - b.ts);
   } catch {
     return [];
   }
@@ -59,22 +97,18 @@ export type LedgerTotals = {
   depositedUsd: number;
   withdrawnUsd: number;
   netContributedUsd: number;
-  /** Notional units. Exists to compute the performance index, nothing else. */
   unitsOutstanding: number;
 };
 
-/**
- * Replay events into totals.
- *
- * Replayed rather than cached, for the same reason positions are: a stored
- * total that drifts from its own event log is a number nobody can reconcile.
- */
-export function replayLedger(events: CapitalEvent[]): LedgerTotals {
+/** Replay events into totals, optionally for a single account. */
+export function replayLedger(events: CapitalEvent[], account?: FundAccount): LedgerTotals {
+  const relevant = account ? events.filter((e) => e.account === account) : events;
+
   let depositedUsd = 0;
   let withdrawnUsd = 0;
   let unitsOutstanding = 0;
 
-  for (const e of events) {
+  for (const e of relevant) {
     if (e.type === "deposit") {
       depositedUsd += e.amountUsd;
       unitsOutstanding += e.unitsDelta;
@@ -97,7 +131,6 @@ export type TradingPnl = {
   unrealisedUsd: number;
   fundingUsd: number;
   feesUsd: number;
-  /** Realised + unrealised + funding − fees. */
   totalUsd: number;
 };
 
@@ -110,23 +143,13 @@ export const NO_PNL: TradingPnl = {
 };
 
 export type FundNav = {
-  /** The balance everything else sizes against. */
   navUsd: number;
   netContributedUsd: number;
   depositedUsd: number;
   withdrawnUsd: number;
   pnl: TradingPnl;
-  /**
-   * Time-weighted performance index, starting at 1.0000.
-   *
-   * Moves only on trading P&L — deposits and withdrawals issue or redeem units
-   * at the current level and therefore leave it unchanged. 1.05 means the
-   * strategy is up 5% regardless of how much capital passed through.
-   */
   performanceIndex: number;
-  /** Index − 1, i.e. cumulative time-weighted return. */
   twrPct: number;
-  /** Simple return on net capital in. Null when nothing was contributed. */
   returnOnCapitalPct: number | null;
   unitsOutstanding: number;
   funded: boolean;
@@ -134,13 +157,25 @@ export type FundNav = {
   nature: CapitalNature | "mixed" | "none";
 };
 
+/** Aggregate NAV from all events plus total P&L. */
 export function computeNav(events: CapitalEvent[], pnl: TradingPnl = NO_PNL): FundNav {
-  const totals = replayLedger(events);
-  const navUsd = totals.netContributedUsd + pnl.totalUsd;
+  return navFrom(replayLedger(events), pnl, events);
+}
 
+/** NAV for one account, from that account's events and P&L. */
+export function computeAccountNav(
+  events: CapitalEvent[],
+  account: FundAccount,
+  pnl: TradingPnl = NO_PNL,
+): FundNav {
+  const accountEvents = events.filter((e) => e.account === account);
+  return navFrom(replayLedger(accountEvents), pnl, accountEvents);
+}
+
+function navFrom(totals: LedgerTotals, pnl: TradingPnl, events: CapitalEvent[]): FundNav {
+  const navUsd = totals.netContributedUsd + pnl.totalUsd;
   const natures = new Set(events.map((e) => e.nature));
   const mixed = natures.size > 1;
-
   const performanceIndex =
     totals.unitsOutstanding > 0 ? navUsd / totals.unitsOutstanding : INITIAL_NAV_PER_UNIT;
 
@@ -166,52 +201,80 @@ export type RecordResult =
   | { ok: false; error: string };
 
 /**
- * Record a deposit or withdrawal.
+ * Record a deposit or withdrawal into one account.
  *
- * Units are priced at the index level computed *before* the event is applied.
- * Pricing after would let a deposit move the index it was priced against,
- * which would corrupt the performance series with capital flows — the exact
- * thing the index exists to exclude.
+ * When `currency` is not USD, `usdPerUnit` converts it — the caller passes the
+ * live rate, and the USD amount is computed and stored as canonical. Units are
+ * priced at the index level computed BEFORE the event is applied, so a deposit
+ * cannot move the index it was priced against.
  */
 export async function recordCapitalEvent(input: {
+  account: FundAccount;
   type: "deposit" | "withdrawal";
-  amountUsd: number;
+  /** Amount in `currency`. */
+  amount: number;
+  currency?: string;
+  /** USD per 1 unit of `currency`. Required and > 0 when currency ≠ USD. */
+  usdPerUnit?: number;
   nature: CapitalNature;
   note?: string;
   pnl?: TradingPnl;
 }): Promise<RecordResult> {
-  const { type, amountUsd, nature, note, pnl = NO_PNL } = input;
+  const { account, type, amount, currency = "USD", nature, note, pnl = NO_PNL } = input;
 
-  if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+  if (!FUND_ACCOUNTS.some((a) => a.id === account)) {
+    return { ok: false, error: `Unknown account: ${account}` };
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, error: "Amount must be a positive number" };
   }
 
-  const events = await readCapitalEvents();
-  const navBefore = computeNav(events, pnl);
+  let amountUsd = amount;
+  let original: OriginalContribution | null = null;
 
-  if (events.length > 0 && navBefore.nature !== "none" && navBefore.nature !== nature) {
+  if (currency !== "USD") {
+    const rate = input.usdPerUnit;
+    if (!rate || !Number.isFinite(rate) || rate <= 0) {
+      return {
+        ok: false,
+        error: `A live ${currency}/USD rate is required to convert a ${currency} deposit`,
+      };
+    }
+    amountUsd = amount * rate;
+    original = { currency, amount, usdPerUnit: rate };
+  }
+
+  const events = await readCapitalEvents();
+
+  // Nature is a property of the whole ledger, not per account — mixing real and
+  // simulated capital anywhere makes the track record indefensible.
+  const ledgerNature = computeNav(events, pnl).nature;
+  if (events.length > 0 && ledgerNature !== "none" && ledgerNature !== nature) {
     return {
       ok: false,
       error:
-        `This ledger holds ${navBefore.nature} capital and you are adding ${nature}. ` +
-        `Mixing them produces a track record that cannot be defended — reset the ` +
-        `book first, or keep them separate.`,
+        `This ledger holds ${ledgerNature} capital and you are adding ${nature}. ` +
+        `Mixing them produces a track record that cannot be defended — reset it first.`,
     };
   }
+
+  const navBefore = computeAccountNav(events, account, pnl);
 
   if (type === "withdrawal" && amountUsd > navBefore.navUsd + 1e-9) {
     return {
       ok: false,
-      error: `Withdrawal of $${amountUsd.toFixed(2)} exceeds the fund balance of $${navBefore.navUsd.toFixed(2)}`,
+      error: `Withdrawal of $${amountUsd.toFixed(2)} exceeds the ${account} balance of $${navBefore.navUsd.toFixed(2)}`,
     };
   }
 
   const event: CapitalEvent = {
     id: `cap_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
     ts: Date.now(),
+    account,
     type,
     amountUsd,
     nature,
+    original,
     navPerUnitAtEvent: navBefore.performanceIndex,
     unitsDelta: amountUsd / navBefore.performanceIndex,
     note: note?.trim() || null,
@@ -219,7 +282,11 @@ export async function recordCapitalEvent(input: {
 
   await appendLog(CAPITAL_LOG, [event]);
 
-  return { ok: true, event, nav: computeNav([...events, event], pnl) };
+  return {
+    ok: true,
+    event,
+    nav: computeAccountNav([...events, event], account, pnl),
+  };
 }
 
 /** Wipe the ledger. Deliberate action only — hence the explicit name. */

@@ -1,6 +1,6 @@
 # Roadmap — from here to a fully autonomous platform
 
-**Status:** 2026-07-21 · ~17,800 lines, 240 tests, 9 commits
+**Status:** 2026-07-22 · ~18,400 lines, 310 tests, 10 commits
 **Companions:** `DESIGN.md` (architecture) · `STRATEGY.md` (what we trade and why)
 
 ---
@@ -43,6 +43,18 @@ Command · Markets · Signals · Allocation · Control · Treasury. Real data th
 ### Scanner — `src/lib/engine/scanner.ts`
 
 Scores L1 (funding carry) and L2 (cross-venue spread) across the 8-asset universe, routes each to its sleeve, runs the full gate, and reports the binding constraint.
+
+### Capital ledger — two accounts, ZAR-native (`src/lib/fund/`)
+
+Capital is split across a **crypto** book and a **forex** book. Each has its own balance and NAV; a position's P&L is attributed to the account matching its sleeve's asset class, and the two always sum to the fund total because the total is the sum. Deposits can be made in **ZAR** — converted at the live rate the instant they are recorded and stored as canonical USD, with the original rand amount and rate kept for audit. The book starts at zero and is seeded from real recorded events only (`scripts/seed-ledger.ts`), never a hand-set balance. Treasury shows both accounts, per-account P&L, a live-rate badge and a refresh control.
+
+### Resilient currency conversion — `src/lib/market/convert.ts`
+
+A conversion is never "unavailable". Live ECB fix when the provider answers, the last-known fix from a durable cache when it does not, a labelled reference seed only before the first fetch. The old degraded-to-zero path that surfaced "rate n/a" is gone.
+
+### Forex signals — the strategy, not just the mandate (`src/lib/calc/fxsignal.ts`, 11 tests)
+
+The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation. Still shadow-only: forex has no execution path yet (see A-phase), so these are scored, not traded.
 
 ---
 

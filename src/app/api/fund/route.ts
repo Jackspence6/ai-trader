@@ -1,37 +1,83 @@
 /**
  * Fund state and the capital ledger.
  *
- * GET  — NAV, P&L, capital event history
- * POST — record a deposit or withdrawal
+ * GET  — NAV, P&L, per-account balances, capital history, and a live rate table
+ * POST — record a deposit or withdrawal into one account
  *
  * NAV is derived here, never supplied by the caller. A client that could set
  * NAV could set it wrong, and every position size and tier gate downstream
- * would inherit the mistake.
+ * would inherit the mistake. The same goes for the FX rate on a ZAR deposit —
+ * it is fetched server-side, never taken from the request, so a client cannot
+ * mint dollars by claiming a favourable rate.
  */
 
-import { recordCapitalEvent, resetLedger, type CapitalNature } from "@/lib/fund/ledger";
+import {
+  recordCapitalEvent,
+  resetLedger,
+  FUND_ACCOUNTS,
+  type CapitalNature,
+  type FundAccount,
+} from "@/lib/fund/ledger";
 import { getFundState, tradingPnl } from "@/lib/fund/nav";
+import { getRateTable, inDisplayCurrencies, usdPerUnit } from "@/lib/market/convert";
 import { FUND } from "@/lib/fund/fund";
 
+function navView(s: {
+  navUsd: number;
+  netContributedUsd: number;
+  depositedUsd: number;
+  withdrawnUsd: number;
+  performanceIndex: number;
+  twrPct: number;
+  returnOnCapitalPct: number | null;
+  funded: boolean;
+  nature: string;
+  mixed: boolean;
+}) {
+  return {
+    navUsd: s.navUsd,
+    netContributedUsd: s.netContributedUsd,
+    depositedUsd: s.depositedUsd,
+    withdrawnUsd: s.withdrawnUsd,
+    performanceIndex: s.performanceIndex,
+    twrPct: s.twrPct,
+    returnOnCapitalPct: s.returnOnCapitalPct,
+    funded: s.funded,
+    nature: s.nature,
+    mixed: s.mixed,
+  };
+}
+
 export async function GET() {
-  const state = await getFundState();
+  const [state, rates] = await Promise.all([getFundState(), getRateTable()]);
 
   return Response.json(
     {
       fund: FUND,
       nav: {
-        navUsd: state.navUsd,
-        netContributedUsd: state.netContributedUsd,
-        depositedUsd: state.depositedUsd,
-        withdrawnUsd: state.withdrawnUsd,
-        performanceIndex: state.performanceIndex,
-        twrPct: state.twrPct,
-        returnOnCapitalPct: state.returnOnCapitalPct,
-        funded: state.funded,
-        nature: state.nature,
-        mixed: state.mixed,
+        ...navView(state),
+        // The headline NAV in every display currency, so the UI never has to
+        // convert client-side or show a missing figure.
+        display: inDisplayCurrencies(rates, state.navUsd),
       },
       pnl: state.pnl,
+      accounts: state.accounts.map((a) => ({
+        account: a.account,
+        label: FUND_ACCOUNTS.find((f) => f.id === a.account)?.label ?? a.account,
+        note: FUND_ACCOUNTS.find((f) => f.id === a.account)?.note ?? "",
+        nav: navView(a),
+        display: inDisplayCurrencies(rates, a.navUsd),
+        pnl: a.pnl,
+        openPositions: a.openPositions,
+        unpriced: a.unpriced,
+      })),
+      rates: {
+        source: rates.source,
+        asOf: rates.asOf,
+        usdPer: rates.usdPer,
+        // Convenience: how many ZAR to one USD, the number the operator thinks in.
+        zarPerUsd: rates.usdPer.ZAR ? 1 / rates.usdPer.ZAR : null,
+      },
       // Newest first — the ledger is read as "what happened lately".
       events: [...state.events].reverse(),
       openPositions: state.openPositions,
@@ -44,8 +90,11 @@ export async function GET() {
 export async function POST(request: Request) {
   let body: {
     action?: string;
+    account?: string;
     type?: string;
+    amount?: number;
     amountUsd?: number;
+    currency?: string;
     nature?: string;
     note?: string;
   };
@@ -61,20 +110,49 @@ export async function POST(request: Request) {
     return Response.json({ reset: true }, { headers: { "cache-control": "no-store" } });
   }
 
+  const account = body.account as FundAccount;
+  if (!FUND_ACCOUNTS.some((a) => a.id === account)) {
+    return Response.json(
+      { error: `Choose an account: ${FUND_ACCOUNTS.map((a) => a.id).join(" or ")}` },
+      { status: 400 },
+    );
+  }
+
   const type = body.type === "withdrawal" ? "withdrawal" : "deposit";
   const nature: CapitalNature = body.nature === "real" ? "real" : "simulated";
+  const currency = (body.currency ?? "USD").toUpperCase();
+  // Back-compat: an `amountUsd`-only body still works and means USD.
+  const amount = Number(body.amount ?? body.amountUsd);
 
-  // P&L is passed in so units are priced against the CURRENT NAV per unit,
-  // including unrealised gains. Pricing against contributed capital alone would
-  // let a late deposit buy units cheaply and dilute earlier gains.
-  const { pnl } = await tradingPnl();
+  // The conversion rate is fetched server-side. A ZAR deposit is converted at
+  // the live rate at this instant; USD needs no rate.
+  let usdPerUnitRate: number | undefined;
+  if (currency !== "USD") {
+    const rates = await getRateTable();
+    usdPerUnitRate = usdPerUnit(rates, currency);
+    if (!usdPerUnitRate) {
+      return Response.json(
+        { error: `No conversion rate available for ${currency}` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // P&L for THIS account is passed in so units are priced against the account's
+  // current NAV per unit, including unrealised gains. Pricing against
+  // contributed capital alone would let a late deposit buy units cheaply and
+  // dilute earlier gains.
+  const { byAccount } = await tradingPnl();
 
   const result = await recordCapitalEvent({
+    account,
     type,
-    amountUsd: Number(body.amountUsd),
+    amount,
+    currency,
+    usdPerUnit: usdPerUnitRate,
     nature,
     note: body.note,
-    pnl,
+    pnl: byAccount[account].pnl,
   });
 
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });

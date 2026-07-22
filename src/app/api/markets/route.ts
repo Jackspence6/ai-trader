@@ -7,10 +7,11 @@
  */
 
 import { fetchSnapshot } from "@/lib/market/venues";
-import { fetchFxRates } from "@/lib/market/fx";
+import { getRateTable, toFxRates } from "@/lib/market/convert";
 
 export async function GET() {
-  const [snapshot, fx] = await Promise.all([fetchSnapshot(), fetchFxRates()]);
+  const [snapshot, table] = await Promise.all([fetchSnapshot(), getRateTable()]);
+  const fx = toFxRates(table);
 
   return Response.json(
     { ...snapshot, fx },

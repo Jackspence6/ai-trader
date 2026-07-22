@@ -7,12 +7,15 @@
  * P&L. That is what makes it compound, and what makes a wrong number
  * noticeable — if it moves, something happened and you can find out what.
  *
- * The fund is wholly owned by Musket Goose — no fractional stakes and no
- * members — so this screen shows ONE balance rather than a cap table.
+ * Capital is split across two accounts — a **crypto** book and a **forex**
+ * book — because the two asset classes carry completely different risk and the
+ * whole reason to hold both is to keep them separable. Each account has its own
+ * balance, its own P&L, and is funded independently. The two always sum to the
+ * fund total, because the total is computed as the sum, never a second way.
  *
  * The performance index is the number worth watching. It moves on trading P&L
  * alone and is unaffected by deposits, so it answers "is the strategy working?"
- * — which a balance cannot, because adding $5,000 and earning $5,000 look
+ * — which a balance cannot, because adding R5,000 and earning R5,000 look
  * identical on a balance.
  */
 
@@ -21,34 +24,65 @@ import { useLive } from "@/lib/live";
 import { Money } from "@/lib/currency";
 import { resolveTier } from "@/lib/calc/tiers";
 import { DEFAULT_VENUE_FEES } from "@/lib/calc/costs";
-import type { CapitalEvent } from "@/lib/fund/ledger";
+import type { CapitalEvent, FundAccount } from "@/lib/fund/ledger";
 import { TierLadder } from "@/components/ladder";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
+type NavView = {
+  navUsd: number;
+  netContributedUsd: number;
+  depositedUsd: number;
+  withdrawnUsd: number;
+  performanceIndex: number;
+  twrPct: number;
+  returnOnCapitalPct: number | null;
+  funded: boolean;
+  nature: "simulated" | "real" | "mixed" | "none";
+  mixed: boolean;
+};
+
+type Pnl = {
+  realisedUsd: number;
+  unrealisedUsd: number;
+  fundingUsd: number;
+  feesUsd: number;
+  totalUsd: number;
+};
+
+type AccountView = {
+  account: FundAccount;
+  label: string;
+  note: string;
+  nav: NavView;
+  pnl: Pnl;
+  openPositions: number;
+  unpriced: string[];
+};
+
 type FundResponse = {
   fund: { name: string; ownership: string; decisionMaker: string };
-  nav: {
-    navUsd: number;
-    netContributedUsd: number;
-    depositedUsd: number;
-    withdrawnUsd: number;
-    performanceIndex: number;
-    twrPct: number;
-    returnOnCapitalPct: number | null;
-    funded: boolean;
-    nature: "simulated" | "real" | "mixed" | "none";
-    mixed: boolean;
-  };
-  pnl: {
-    realisedUsd: number;
-    unrealisedUsd: number;
-    fundingUsd: number;
-    feesUsd: number;
-    totalUsd: number;
+  nav: NavView;
+  pnl: Pnl;
+  accounts: AccountView[];
+  rates: {
+    source: "live" | "cached" | "reference";
+    asOf: string;
+    usdPer: Record<string, number>;
+    zarPerUsd: number | null;
   };
   events: CapitalEvent[];
   openPositions: number;
   unpriced: string[];
+};
+
+// Static class strings per account — Tailwind's JIT cannot see interpolated
+// class names, so the crypto/forex accents are spelled out in full.
+const ACCOUNT_STYLE: Record<
+  FundAccount,
+  { text: string; borderL: string; tag: string }
+> = {
+  crypto: { text: "text-accent", borderL: "border-accent/50", tag: "text-accent" },
+  forex: { text: "text-fx", borderL: "border-fx/50", tag: "text-fx" },
 };
 
 export default function Treasury() {
@@ -59,11 +93,18 @@ export default function Treasury() {
 
   return (
     <div className="space-y-3 p-3">
-      {nav && <NatureBanner nature={nav.nature} funded={nav.funded} />}
+      <div className="flex flex-wrap items-center gap-2">
+        {nav && <NatureBanner nature={nav.nature} funded={nav.funded} />}
+        <div className="ml-auto flex items-center gap-2">
+          <RateBadge rates={d?.rates} />
+          <RefreshButton status={fund.status} ageSeconds={fund.ageSeconds} onClick={fund.refresh} />
+        </div>
+      </div>
 
+      {/* ---------------------------------------------------- fund-wide stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Panel>
-          <Stat label="NET ASSET VALUE" sub={<span className="text-dim">derived</span>}>
+          <Stat label="NET ASSET VALUE" sub={<span className="text-dim">both accounts</span>}>
             <span className="text-[19px]">
               <Money usd={nav?.navUsd ?? 0} />
             </span>
@@ -127,6 +168,14 @@ export default function Treasury() {
         </Panel>
       </div>
 
+      {/* ------------------------------------------------- the two accounts */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {(d?.accounts ?? []).map((a) => (
+          <AccountCard key={a.account} a={a} />
+        ))}
+        {!d && <div className="p-4 text-[12px] text-dim">Loading accounts…</div>}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.15fr_1fr]">
         <Panel label="FUND" hint="WHOLLY OWNED — NO FRACTIONAL STAKES">
           <dl className="space-y-2.5 text-[12px]">
@@ -159,19 +208,20 @@ export default function Treasury() {
           </dl>
 
           <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-            One owner, one balance. Capital events are recorded against the fund
-            rather than a person — without authentication, a self-selected name
-            would look like an audit trail without being one.
+            One owner, two accounts, one balance per account. Capital is split
+            between the crypto and forex books so each can be funded and judged on
+            its own — deposits go to whichever book you choose below.
           </p>
         </Panel>
 
         <CapitalForm
           currentNature={nav?.nature ?? "none"}
+          zarPerUsd={d?.rates.zarPerUsd ?? null}
           onDone={() => fund.refresh()}
         />
       </div>
 
-      <Panel label="WHERE THE P&L CAME FROM" hint="EVERY COMPONENT, SIGNED">
+      <Panel label="WHERE THE P&L CAME FROM" hint="EVERY COMPONENT, SIGNED · BOTH ACCOUNTS">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-5">
           <Stat label="REALISED" sub={<span className="text-dim">closed trades</span>}>
             <span className={cx((d?.pnl.realisedUsd ?? 0) >= 0 ? "text-up" : "text-down")}>
@@ -233,9 +283,11 @@ export default function Treasury() {
               <thead>
                 <tr className="border-b border-line">
                   <Th>WHEN</Th>
+                  <Th>ACCOUNT</Th>
                   <Th>TYPE</Th>
                   <Th>NATURE</Th>
                   <Th right>AMOUNT</Th>
+                  <Th right>FUNDED AS</Th>
                   <Th right>INDEX AT EVENT</Th>
                   <Th>NOTE</Th>
                 </tr>
@@ -246,6 +298,16 @@ export default function Treasury() {
                     <Td>
                       <span className="tnum text-dim">
                         {new Date(e.ts).toISOString().replace("T", " ").slice(0, 16)}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span
+                        className={cx(
+                          "micro",
+                          ACCOUNT_STYLE[e.account ?? "crypto"]?.text ?? "text-muted",
+                        )}
+                      >
+                        {(e.account ?? "crypto").toUpperCase()}
                       </span>
                     </Td>
                     <Td>
@@ -262,6 +324,19 @@ export default function Treasury() {
                     </Td>
                     <Td right>
                       <Money usd={e.amountUsd} />
+                    </Td>
+                    <Td right>
+                      {e.original ? (
+                        <span className="tnum text-dim">
+                          {e.original.currency === "ZAR" ? "R" : ""}
+                          {e.original.amount.toLocaleString("en-US", {
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          {e.original.currency}
+                        </span>
+                      ) : (
+                        <span className="tnum text-dim">USD</span>
+                      )}
                     </Td>
                     <Td right>
                       <span className="tnum text-dim">{e.navPerUnitAtEvent.toFixed(6)}</span>
@@ -333,6 +408,113 @@ export default function Treasury() {
   );
 }
 
+/* --------------------------------------------------------------- account card */
+
+function AccountCard({ a }: { a: AccountView }) {
+  const style = ACCOUNT_STYLE[a.account] ?? ACCOUNT_STYLE.crypto;
+  const pnl = a.pnl.totalUsd;
+  const roc = a.nav.returnOnCapitalPct;
+
+  return (
+    <div className={cx("border-l-2 bg-panel", style.borderL)}>
+      <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-3 py-2.5">
+        <span className={cx("text-[13px] font-medium tracking-wide", style.text)}>
+          {a.label.toUpperCase()} ACCOUNT
+        </span>
+        <span className="micro ml-auto text-dim">
+          {a.openPositions} open · idx {a.nav.performanceIndex.toFixed(4)}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 p-3">
+        <Stat label="BALANCE" sub={<span className="text-dim">NAV</span>}>
+          <span className="text-[17px]">
+            <Money usd={a.nav.navUsd} />
+          </span>
+        </Stat>
+        <Stat label="INVESTED" sub={<span className="text-dim">net contributed</span>}>
+          <span className="text-[17px] text-muted">
+            <Money usd={a.nav.netContributedUsd} />
+          </span>
+        </Stat>
+        <Stat
+          label="P&L"
+          sub={
+            <span className="text-dim">
+              {roc === null ? "—" : `${roc >= 0 ? "+" : ""}${(roc * 100).toFixed(2)}% on capital`}
+            </span>
+          }
+        >
+          <span className={cx("text-[17px]", pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-muted")}>
+            <Money usd={pnl} sign />
+          </span>
+        </Stat>
+      </div>
+
+      <p className="border-t border-line px-3 py-2.5 text-[11px] leading-relaxed text-dim">
+        {a.note}
+      </p>
+      {a.unpriced.length > 0 && (
+        <p className="border-t border-line px-3 py-2 text-[11px] text-warn">
+          Unpriced: {a.unpriced.join(", ")} — excluded from this book&apos;s P&L.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- rate badge */
+
+function RateBadge({ rates }: { rates?: FundResponse["rates"] }) {
+  if (!rates) return null;
+  const tone = rates.source === "live" ? "up" : rates.source === "cached" ? "accent" : "warn";
+  const label =
+    rates.source === "live"
+      ? "LIVE FX"
+      : rates.source === "cached"
+        ? "CACHED FX"
+        : "REFERENCE FX";
+  return (
+    <span
+      className="flex items-center gap-1.5"
+      title={
+        rates.source === "live"
+          ? `Live ECB reference fix (${rates.asOf})`
+          : rates.source === "cached"
+            ? "Provider briefly unreachable — using the last live rate we fetched"
+            : "First fetch has not landed yet — approximate reference rate"
+      }
+    >
+      <Tag tone={tone as "up" | "accent" | "warn"}>{label}</Tag>
+      {rates.zarPerUsd && (
+        <span className="micro tnum text-dim">1 USD = R{rates.zarPerUsd.toFixed(2)}</span>
+      )}
+    </span>
+  );
+}
+
+function RefreshButton({
+  status,
+  ageSeconds,
+  onClick,
+}: {
+  status: "connecting" | "live" | "stale" | "error";
+  ageSeconds: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title="Refresh everything now"
+      className="micro flex items-center gap-1.5 border border-line-bright px-2 py-1 text-dim transition-colors hover:text-ink"
+    >
+      <StatusDot state={status === "live" ? "ok" : status === "error" ? "bad" : "idle"} />
+      REFRESH
+      <span className="tnum opacity-60">{ageSeconds}s</span>
+    </button>
+  );
+}
+
 /* --------------------------------------------------------------- banner */
 
 function NatureBanner({
@@ -347,8 +529,8 @@ function NatureBanner({
       <div className="flex flex-wrap items-center gap-2 border border-accent/25 bg-accent/5 px-3 py-2.5">
         <Tag tone="accent">NO CAPITAL</Tag>
         <span className="text-[12px] text-muted">
-          Record a simulated deposit below to give the system a balance to trade
-          against. Nothing will trade until you do.
+          Record a deposit below to give an account a balance to trade against.
+          Nothing will trade until you do.
         </span>
       </div>
     );
@@ -393,17 +575,29 @@ function NatureBanner({
 
 function CapitalForm({
   currentNature,
+  zarPerUsd,
   onDone,
 }: {
   currentNature: "simulated" | "real" | "mixed" | "none";
+  zarPerUsd: number | null;
   onDone: () => void;
 }) {
+  const [account, setAccount] = useState<FundAccount>("crypto");
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
   const [nature, setNature] = useState<"simulated" | "real">("simulated");
-  const [amount, setAmount] = useState("1000");
+  const [currency, setCurrency] = useState<"ZAR" | "USD">("ZAR");
+  const [amount, setAmount] = useState("5000");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const amt = Number(amount);
+  const usdPreview =
+    currency === "USD"
+      ? amt
+      : zarPerUsd && zarPerUsd > 0 && Number.isFinite(amt)
+        ? amt / zarPerUsd
+        : null;
 
   const submit = useCallback(
     async (e: React.FormEvent) => {
@@ -414,17 +608,11 @@ function CapitalForm({
         const r = await fetch("/api/fund", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            type,
-            nature,
-            amountUsd: Number(amount),
-            note,
-          }),
+          body: JSON.stringify({ account, type, nature, currency, amount: Number(amount), note }),
         });
         const d = (await r.json()) as { error?: string };
         if (d.error) setError(d.error);
         else {
-          setAmount("1000");
           setNote("");
           onDone();
         }
@@ -434,12 +622,35 @@ function CapitalForm({
         setBusy(false);
       }
     },
-    [type, nature, amount, note, onDone],
+    [account, type, nature, currency, amount, note, onDone],
   );
 
   return (
     <Panel label="DEPOSIT / WITHDRAW" hint="CHANGES NAV, WHICH CHANGES SIZING">
       <form onSubmit={submit} className="space-y-3">
+        <div>
+          <Micro className="mb-1.5">ACCOUNT</Micro>
+          <div className="flex">
+            {(["crypto", "forex"] as const).map((ac) => (
+              <button
+                key={ac}
+                type="button"
+                onClick={() => setAccount(ac)}
+                className={cx(
+                  "micro flex-1 border px-2 py-1.5 transition-colors -ml-px first:ml-0",
+                  account === ac
+                    ? ac === "crypto"
+                      ? "border-accent/50 bg-accent/10 text-accent z-10"
+                      : "border-fx/50 bg-fx/10 text-fx z-10"
+                    : "border-line-bright text-dim hover:text-muted",
+                )}
+              >
+                {ac.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Micro className="mb-1.5">DIRECTION</Micro>
@@ -493,15 +704,47 @@ function CapitalForm({
         </div>
 
         <div>
-          <Micro className="mb-1.5">AMOUNT (USD)</Micro>
+          <div className="mb-1.5 flex items-center justify-between">
+            <Micro>AMOUNT</Micro>
+            <div className="flex">
+              {(["ZAR", "USD"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCurrency(c)}
+                  className={cx(
+                    "micro border px-1.5 py-0.5 transition-colors -ml-px first:ml-0",
+                    currency === c
+                      ? "border-accent/50 bg-accent/10 text-accent z-10"
+                      : "border-line-bright text-dim hover:text-muted",
+                  )}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
           <input
             type="number"
             min={0}
-            step={100}
+            step={currency === "ZAR" ? 500 : 50}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className="tnum w-full border border-line-bright bg-raised/60 px-2 py-1.5 text-[13px] text-ink outline-none focus:border-accent/50"
           />
+          {currency === "ZAR" && (
+            <p className="mt-1 text-[11px] text-dim">
+              {usdPreview !== null ? (
+                <>
+                  ≈ <span className="tnum text-muted">${usdPreview.toFixed(2)}</span> at the
+                  live rate. Converted server-side at deposit time; USD is stored as
+                  canonical.
+                </>
+              ) : (
+                "Converted at the live rate when recorded."
+              )}
+            </p>
+          )}
         </div>
 
         <div>
@@ -524,18 +767,21 @@ function CapitalForm({
               : "border-down/50 bg-down/10 text-down hover:bg-down/20",
           )}
         >
-          {busy ? "RECORDING…" : `RECORD ${type.toUpperCase()}`}
+          {busy
+            ? "RECORDING…"
+            : `RECORD ${type.toUpperCase()} → ${account.toUpperCase()}`}
         </button>
 
         {error && <p className="text-[11px] leading-relaxed text-down">{error}</p>}
       </form>
 
       <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-        The fund is wholly owned, so a deposit adds to one balance — it does not
-        buy a stake. Real and simulated capital cannot be mixed: the option locks
-        once the first event sets the nature, because a blended book produces a
-        track record where you can no longer say which returns were earned with
-        money at risk.
+        Fund in rands or dollars — a ZAR deposit is converted at the live rate the
+        instant it is recorded, and the original rand figure is kept for audit.
+        Real and simulated capital cannot be mixed across the fund: the option
+        locks once the first event sets the nature, because a blended book
+        produces a track record where you can no longer say which returns were
+        earned with money at risk.
       </p>
     </Panel>
   );

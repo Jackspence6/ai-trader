@@ -10,6 +10,12 @@
  * NAV = net capital contributed + trading P&L. Both halves are replayed from
  * their own event logs rather than cached, so the figure cannot drift from the
  * events that produced it.
+ *
+ * **Per account.** Capital is split into a crypto book and a forex book, and so
+ * is NAV. A position's P&L belongs to the account matching its sleeve's asset
+ * class, so `crypto` NAV is crypto deposits + crypto trading, and likewise for
+ * forex. The aggregate is just the two summed — it is never computed a second,
+ * independent way, so the parts always add up to the whole.
  */
 
 import { readFills, readFundingPayments } from "@/lib/oms/store";
@@ -17,12 +23,17 @@ import {
   buildPositions,
   countLogicalPositions,
   markPositions,
+  type MarkedPosition,
 } from "@/lib/portfolio/positions";
+import { sleeveById } from "@/lib/portfolio/sleeves";
 import { fetchSnapshot } from "@/lib/market/venues";
 import {
   computeNav,
+  computeAccountNav,
   readCapitalEvents,
+  FUND_ACCOUNTS,
   type CapitalEvent,
+  type FundAccount,
   type FundNav,
   type TradingPnl,
 } from "./ledger";
@@ -44,30 +55,33 @@ export async function currentPrices(): Promise<Map<string, number>> {
   return prices;
 }
 
+/** Which account a position belongs to, by its sleeve's asset class. */
+export function accountForSleeve(sleeveId: string): FundAccount {
+  return sleeveById(sleeveId)?.assetClass ?? "crypto";
+}
+
+const EMPTY_PNL: TradingPnl = {
+  realisedUsd: 0,
+  unrealisedUsd: 0,
+  fundingUsd: 0,
+  feesUsd: 0,
+  totalUsd: 0,
+};
+
 /**
- * Trading P&L from the fill log.
+ * Fold a set of marked positions into one P&L total.
  *
- * An unmarkable position contributes null unrealised, which would make the
+ * An unmarkable open position contributes null unrealised, which would make the
  * total unknowable — so unrealised is summed only over positions we can price,
  * and `unpriced` names the rest. Treating an unpriced holding as zero would
  * understate NAV while looking precise, and an understated NAV silently
  * tightens every limit derived from it.
  */
-export async function tradingPnl(
-  prices?: Map<string, number>,
-): Promise<{ pnl: TradingPnl; unpriced: string[]; openPositions: number }> {
-  const [fills, funding] = await Promise.all([readFills(), readFundingPayments()]);
-
-  if (fills.length === 0) {
-    return {
-      pnl: { realisedUsd: 0, unrealisedUsd: 0, fundingUsd: 0, feesUsd: 0, totalUsd: 0 },
-      unpriced: [],
-      openPositions: 0,
-    };
-  }
-
-  const marks = prices ?? (await currentPrices());
-  const marked = markPositions(buildPositions(fills, funding), marks);
+function foldPnl(marked: MarkedPosition[]): {
+  pnl: TradingPnl;
+  unpriced: string[];
+  openPositions: number;
+} {
   const open = marked.filter((p) => p.qty !== 0);
 
   const realisedUsd = marked.reduce((a, p) => a + p.realisedUsd, 0);
@@ -91,29 +105,85 @@ export async function tradingPnl(
   };
 }
 
+export type PnlBreakdown = {
+  pnl: TradingPnl;
+  unpriced: string[];
+  openPositions: number;
+  /** The same split by account, so each book's NAV can be computed on its own. */
+  byAccount: Record<FundAccount, { pnl: TradingPnl; unpriced: string[]; openPositions: number }>;
+};
+
+/**
+ * Trading P&L from the fill log, aggregate and per account.
+ *
+ * Positions are marked once and then folded twice — once for the whole book,
+ * once per account — so the account figures cannot disagree with the total.
+ */
+export async function tradingPnl(prices?: Map<string, number>): Promise<PnlBreakdown> {
+  const emptyByAccount = (): PnlBreakdown["byAccount"] =>
+    Object.fromEntries(
+      FUND_ACCOUNTS.map((a) => [
+        a.id,
+        { pnl: EMPTY_PNL, unpriced: [] as string[], openPositions: 0 },
+      ]),
+    ) as PnlBreakdown["byAccount"];
+
+  const [fills, funding] = await Promise.all([readFills(), readFundingPayments()]);
+
+  if (fills.length === 0) {
+    return { pnl: EMPTY_PNL, unpriced: [], openPositions: 0, byAccount: emptyByAccount() };
+  }
+
+  const marks = prices ?? (await currentPrices());
+  const marked = markPositions(buildPositions(fills, funding), marks);
+
+  const byAccount = emptyByAccount();
+  for (const a of FUND_ACCOUNTS) {
+    byAccount[a.id] = foldPnl(marked.filter((p) => accountForSleeve(p.sleeveId) === a.id));
+  }
+
+  return { ...foldPnl(marked), byAccount };
+}
+
 export type FundState = FundNav & {
   events: CapitalEvent[];
   unpriced: string[];
   openPositions: number;
 };
 
+export type AccountState = FundState & { account: FundAccount };
+
+export type FundStateFull = FundState & {
+  /** Same shape, one per account. The two accounts sum to this aggregate. */
+  accounts: AccountState[];
+};
+
 /**
- * Full fund state.
+ * Full fund state — aggregate plus each account.
  *
  * `prices` can be passed in by callers that already have a market snapshot, so
  * a single request does not fetch the same data twice.
  */
-export async function getFundState(prices?: Map<string, number>): Promise<FundState> {
-  const [events, pnlResult] = await Promise.all([
-    readCapitalEvents(),
-    tradingPnl(prices),
-  ]);
+export async function getFundState(prices?: Map<string, number>): Promise<FundStateFull> {
+  const [events, breakdown] = await Promise.all([readCapitalEvents(), tradingPnl(prices)]);
+
+  const accounts: AccountState[] = FUND_ACCOUNTS.map((a) => {
+    const b = breakdown.byAccount[a.id];
+    return {
+      account: a.id,
+      ...computeAccountNav(events, a.id, b.pnl),
+      events: events.filter((e) => e.account === a.id),
+      unpriced: b.unpriced,
+      openPositions: b.openPositions,
+    };
+  });
 
   return {
-    ...computeNav(events, pnlResult.pnl),
+    ...computeNav(events, breakdown.pnl),
     events,
-    unpriced: pnlResult.unpriced,
-    openPositions: pnlResult.openPositions,
+    unpriced: breakdown.unpriced,
+    openPositions: breakdown.openPositions,
+    accounts,
   };
 }
 

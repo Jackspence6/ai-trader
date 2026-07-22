@@ -28,6 +28,7 @@ import {
 } from "@/lib/portfolio/sleeves";
 import type { EngineConfig } from "@/lib/engine/config";
 import { Money, useCurrency } from "@/lib/currency";
+import { useLive } from "@/lib/live";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 const BAND_TONE: Record<RiskBand, "up" | "accent" | "warn" | "down"> = {
@@ -292,6 +293,9 @@ export default function AllocationPage() {
         );
       })}
 
+      {/* ------------------------------------------ live forex strategy read */}
+      <ForexSignals />
+
       {/* ------------------------------------------------------ the caveat */}
       <Panel label="HOW TO THINK ABOUT THIS" hint="READ BEFORE MOVING MONEY UP THE RISK CURVE">
         <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-[11.5px] leading-relaxed text-muted md:grid-cols-2">
@@ -327,6 +331,172 @@ export default function AllocationPage() {
         </div>
       </Panel>
     </div>
+  );
+}
+
+/* -------------------------------------------------------- forex signals */
+
+type FxDir = "long" | "short" | "flat";
+
+type FxSignalResponse = {
+  asOf: string | null;
+  policyRatesAsOf: string;
+  signals: {
+    symbol: string;
+    rate: number;
+    stale: boolean;
+    carry: {
+      direction: FxDir;
+      grossCarryApr: number;
+      netCarryApr: number;
+      viable: boolean;
+      note: string;
+    };
+    trend: {
+      direction: FxDir;
+      strengthPct: number;
+      annualisedVol: number | null;
+      engaged: boolean;
+    };
+  }[];
+  bestCarry: FxSignalResponse["signals"][number] | null;
+  bestTrend: FxSignalResponse["signals"][number] | null;
+  viableCarryCount: number;
+  engagedTrendCount: number;
+};
+
+function DirTag({ dir }: { dir: FxDir }) {
+  if (dir === "flat") return <span className="micro text-dim">FLAT</span>;
+  return (
+    <span className={cx("micro", dir === "long" ? "text-up" : "text-down")}>
+      {dir === "long" ? "LONG" : "SHORT"}
+    </span>
+  );
+}
+
+/**
+ * Live read of what the forex book's strategy would do right now — carry (F1)
+ * and trend (F2) scored on real reference data. This is the strategy made
+ * legible: not a mandate paragraph, but the actual signal per pair, including
+ * the honest verdict that most carries are eaten by the broker swap.
+ */
+function ForexSignals() {
+  const fx = useLive<FxSignalResponse>("/api/forex", 60_000);
+  const d = fx.data;
+
+  return (
+    <Panel
+      label="FOREX STRATEGY — LIVE SIGNALS"
+      hint="F1 CARRY · F2 TREND · SCORED ON REAL DATA"
+      right={
+        <span className="flex items-center gap-2">
+          <StatusDot state={fx.status === "live" ? "ok" : fx.status === "error" ? "bad" : "idle"} />
+          <span className="micro text-dim">{fx.ageSeconds}s</span>
+        </span>
+      }
+    >
+      {!d ? (
+        <div className="text-[12px] text-dim">Loading forex signals…</div>
+      ) : d.signals.length === 0 ? (
+        <div className="text-[12px] text-warn">
+          Forex feed unavailable right now — signals resume when the provider
+          responds.
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="border border-line-bright bg-raised/30 px-3 py-2.5">
+              <Micro className="mb-1 text-fx">BEST CARRY (F1)</Micro>
+              {d.bestCarry ? (
+                <div className="text-[12px] text-muted">
+                  <span className="text-ink">{d.bestCarry.symbol}</span>{" "}
+                  <DirTag dir={d.bestCarry.carry.direction} /> · net{" "}
+                  <span className="tnum text-up">
+                    {(d.bestCarry.carry.netCarryApr * 100).toFixed(2)}%/yr
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[12px] text-dim">
+                  No pair clears the swap markup and risk floor — the honest state
+                  of retail carry more often than not.
+                </div>
+              )}
+            </div>
+            <div className="border border-line-bright bg-raised/30 px-3 py-2.5">
+              <Micro className="mb-1 text-fx">STRONGEST TREND (F2)</Micro>
+              {d.bestTrend ? (
+                <div className="text-[12px] text-muted">
+                  <span className="text-ink">{d.bestTrend.symbol}</span>{" "}
+                  <DirTag dir={d.bestTrend.trend.direction} /> ·{" "}
+                  <span className="tnum">
+                    {(Math.abs(d.bestTrend.trend.strengthPct) * 100).toFixed(2)}% sep
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[12px] text-dim">
+                  Majors are ranging — no trend engaged. A trend system stays flat
+                  here rather than bleeding on crossovers.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="micro px-2 py-1.5 text-left font-normal text-dim">PAIR</th>
+                  <th className="micro px-2 py-1.5 text-right font-normal text-dim">RATE</th>
+                  <th className="micro px-2 py-1.5 text-center font-normal text-dim">CARRY</th>
+                  <th className="micro px-2 py-1.5 text-right font-normal text-dim">NET APR</th>
+                  <th className="micro px-2 py-1.5 text-center font-normal text-dim">TREND</th>
+                  <th className="micro px-2 py-1.5 text-right font-normal text-dim">VOL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.signals.map((s) => (
+                  <tr key={s.symbol} className="border-b border-line/60">
+                    <td className="px-2 py-1.5">
+                      <span className="text-ink">{s.symbol}</span>
+                      {s.stale && <span className="micro ml-1 text-warn">STALE</span>}
+                    </td>
+                    <td className="tnum px-2 py-1.5 text-right text-muted">
+                      {s.rate.toFixed(s.rate > 20 ? 2 : 4)}
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <DirTag dir={s.carry.viable ? s.carry.direction : "flat"} />
+                    </td>
+                    <td
+                      className={cx(
+                        "tnum px-2 py-1.5 text-right",
+                        s.carry.viable ? "text-up" : "text-dim",
+                      )}
+                    >
+                      {s.carry.viable ? `${(s.carry.netCarryApr * 100).toFixed(2)}%` : "—"}
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <DirTag dir={s.trend.direction} />
+                    </td>
+                    <td className="tnum px-2 py-1.5 text-right text-dim">
+                      {s.trend.annualisedVol !== null
+                        ? `${(s.trend.annualisedVol * 100).toFixed(1)}%`
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            Carry is the interest differential in the profitable direction, after
+            a conservative broker swap markup — the cost that turns most retail
+            carry negative. Trend is a dual moving-average read that stays flat in
+            a range. Reference rates as of {d.policyRatesAsOf}; quotes {d.asOf}.
+          </p>
+        </>
+      )}
+    </Panel>
   );
 }
 

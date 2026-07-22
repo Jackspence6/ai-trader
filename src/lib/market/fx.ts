@@ -31,64 +31,20 @@ export type FxRates = {
   updatedAt: number;
   /** When we fetched it (ms epoch). */
   fetchedAt: number;
-  /** True when we fell back to identity rates because the provider failed. */
+  /**
+   * Where the rate came from. A live fix is best; a cached last-known fix
+   * survives a provider outage; a reference seed only appears before the first
+   * fetch on a fresh deployment. All three are usable — the guarantee is that a
+   * conversion is never unavailable, so this is provenance, not a failure flag.
+   */
+  source: "live" | "cached" | "reference";
+  /**
+   * Retained for compatibility. Now always false: we never zero the rates,
+   * because a rand figure that silently reads "unavailable" is exactly the
+   * number the operator is trying to see.
+   */
   degraded: boolean;
 };
-
-/** Identity rates — used only as an explicitly-degraded fallback. */
-export function identityRates(): FxRates {
-  return {
-    base: "USD",
-    rates: { USD: 1, ZAR: 0, EUR: 0, GBP: 0 },
-    updatedAt: 0,
-    fetchedAt: Date.now(),
-    degraded: true,
-  };
-}
-
-type ErApiResponse = {
-  result: string;
-  time_last_update_unix: number;
-  rates: Record<string, number>;
-};
-
-/**
- * Fetch USD-based rates.
- *
- * On failure we return `degraded: true` with zeroed non-USD rates rather than
- * stale or invented numbers. The UI then refuses to show a converted figure and
- * says so — showing a plausible-looking wrong rand number would be worse than
- * showing none, because someone would act on it.
- */
-export async function fetchFxRates(): Promise<FxRates> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8_000);
-  try {
-    const res = await fetch("https://open.er-api.com/v6/latest/USD", {
-      signal: ctrl.signal,
-      cache: "no-store",
-      headers: { accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const d = (await res.json()) as ErApiResponse;
-    if (d.result !== "success") throw new Error("provider reported failure");
-
-    const pick = (c: CurrencyCode) =>
-      Number.isFinite(d.rates[c]) && d.rates[c] > 0 ? d.rates[c] : 0;
-
-    return {
-      base: "USD",
-      rates: { USD: 1, ZAR: pick("ZAR"), EUR: pick("EUR"), GBP: pick("GBP") },
-      updatedAt: d.time_last_update_unix * 1000,
-      fetchedAt: Date.now(),
-      degraded: false,
-    };
-  } catch {
-    return identityRates();
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** Convert a USD amount into the target currency. Returns null if unavailable. */
 export function convertFromUsd(
