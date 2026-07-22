@@ -79,6 +79,18 @@ export const DEFAULT_VENUE_FEES: Record<string, VenueFees> = {
     minNotionalUsd: { spot: 10, perp: 10 },
     cheapestTransferUsd: 1.0,
   },
+  // Spot forex at a competitive retail/ECN broker. The visible commission is
+  // small — the real cost is the bid/ask spread, which is modelled per pair in
+  // the FX book, not here. Min notional reflects that brokers deal in micro
+  // lots. Forex has no perp market, so the perp schedule is a placeholder that
+  // is never reached (FX only ever trades `spot`).
+  fx: {
+    venue: "FX",
+    spot: { makerBps: 0.5, takerBps: 1 },
+    perp: { makerBps: 0.5, takerBps: 1 },
+    minNotionalUsd: { spot: 10, perp: 10 },
+    cheapestTransferUsd: 0,
+  },
 };
 
 export type Liquidity = "taker" | "maker";

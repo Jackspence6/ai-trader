@@ -54,7 +54,13 @@ A conversion is never "unavailable". Live ECB fix when the provider answers, the
 
 ### Forex signals — the strategy, not just the mandate (`src/lib/calc/fxsignal.ts`, 11 tests)
 
-The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation. Still shadow-only: forex has no execution path yet (see A-phase), so these are scored, not traded.
+The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation.
+
+### Forex execution — the forex account trades (`src/lib/engine/forexscan.ts`, `src/lib/oms/fxcarry.ts`)
+
+**F1 carry now paper-trades through the same engine as crypto.** FX carry opportunities are scored, gated and executed against a simulated FX venue (single spot leg, per-pair spread modelled and paid), and the interest differential accrues as a `FundingPayment` — the same mechanism crypto funding uses, with the direction and swap cost handled honestly (a decayed carry accrues negative). Positions attribute to the forex account by sleeve asset class, and the tier's concurrent-position budget is now spent **per account** so a crypto trade never starves a forex one. Verified live against Neon: an F1 USD/JPY carry executes into the forex book and accrues carry the next pass. FX carry is held over its own quarter-long horizon, not the crypto funding hold — the carry is a slow, months-long trade.
+
+**F2 trend is still scored, not executed.** The risk gate scores a trade by measurable net edge, which a carry has and a stop-managed trend bet does not — forcing trend through an edge gate would be dishonest bookkeeping. It needs a gate built for how trend-following actually works (invalidation and volatility stops), which is the next piece.
 
 ---
 

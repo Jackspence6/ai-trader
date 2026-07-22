@@ -27,6 +27,8 @@ import {
 } from "@/lib/portfolio/positions";
 import { sleeveById } from "@/lib/portfolio/sleeves";
 import { fetchSnapshot } from "@/lib/market/venues";
+import { fetchFxQuotes } from "@/lib/market/forex";
+import { fxPrices } from "@/lib/market/fxbook";
 import {
   computeNav,
   computeAccountNav,
@@ -38,9 +40,17 @@ import {
   type TradingPnl,
 } from "./ledger";
 
-/** Mark prices for everything we might hold. */
+/** Mark prices for everything we might hold — crypto and forex. */
 export async function currentPrices(): Promise<Map<string, number>> {
-  const snapshot = await fetchSnapshot();
+  // FX is fetched alongside crypto so an FX position is never unmarkable just
+  // because the price map came from the crypto feed. A failed FX fetch leaves
+  // FX positions unpriced (excluded, not zeroed) rather than failing the whole
+  // mark.
+  const [snapshot, fx] = await Promise.all([
+    fetchSnapshot(),
+    fetchFxQuotes().catch(() => []),
+  ]);
+
   const prices = new Map<string, number>();
   // Spot first — it is the cleaner mark. Perp fills any gaps for assets with
   // no spot book on our venues.
@@ -52,6 +62,8 @@ export async function currentPrices(): Promise<Map<string, number>> {
   for (const q of snapshot.quotes) {
     if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
   }
+  // FX pair rates, keyed by the pair symbol — the same key FX fills use.
+  for (const [symbol, rate] of fxPrices(fx)) prices.set(symbol, rate);
   return prices;
 }
 

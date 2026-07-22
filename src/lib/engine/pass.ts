@@ -13,20 +13,67 @@
  */
 
 import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
+import { fetchFxQuotes } from "@/lib/market/forex";
+import { fxBooks, fxPrices } from "@/lib/market/fxbook";
 import { UNIVERSE } from "@/lib/market/types";
+import { resolveTier, tierForNav } from "@/lib/calc/tiers";
 import { scan } from "@/lib/engine/scanner";
+import { scanForex } from "@/lib/engine/forexscan";
 import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
 import { daysHeldAbove } from "@/lib/db/nav";
-import { tierForNav } from "@/lib/calc/tiers";
 import { getFundState } from "@/lib/fund/nav";
+import { buildPositions } from "@/lib/portfolio/positions";
+import { accrueFxCarry } from "@/lib/oms/fxcarry";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
 import { edgeAccuracy, runPaperPass } from "@/lib/oms/paper";
-import { readFills, readFundingPayments, recordFills, recordOrders } from "@/lib/oms/store";
-import { appendLog } from "@/lib/store/kv";
+import {
+  readFills,
+  readFundingPayments,
+  recordFills,
+  recordFunding,
+  recordOrders,
+} from "@/lib/oms/store";
+import { appendLog, readJson, writeJson } from "@/lib/store/kv";
 
 /** Durable per-pass history. Read by the performance screen. */
 export const TRADE_LOG = "trade_passes";
+
+/** When FX carry was last accrued — the clock the accrual is measured against. */
+const FX_CARRY_ACCRUAL_KEY = "fx_carry_last_accrual";
+/** Clamp a long gap (deploy downtime) so a resumed pass cannot book a windfall. */
+const MAX_ACCRUAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Book the FX carry earned since the last pass.
+ *
+ * Time-driven, so it runs exactly once per pass and advances its own clock. The
+ * first ever pass sets the baseline and accrues nothing — there is no prior
+ * interval to earn over.
+ */
+async function accrueCarry(
+  fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
+): Promise<void> {
+  const now = Date.now();
+  const last = (await readJson<number>(FX_CARRY_ACCRUAL_KEY)) ?? 0;
+
+  if (!last) {
+    await writeJson(FX_CARRY_ACCRUAL_KEY, now);
+    return;
+  }
+
+  const elapsedMs = Math.min(now - last, MAX_ACCRUAL_MS);
+  if (elapsedMs <= 0) {
+    await writeJson(FX_CARRY_ACCRUAL_KEY, now);
+    return;
+  }
+
+  const [fills, funding] = await Promise.all([readFills(), readFundingPayments()]);
+  const openFx = buildPositions(fills, funding).filter((p) => p.qty !== 0);
+  const payments = accrueFxCarry(openFx, fxQuotes, elapsedMs, now);
+  if (payments.length > 0) await recordFunding(payments);
+  await writeJson(FX_CARRY_ACCRUAL_KEY, now);
+}
 
 export type TradePassRecord = {
   ts: number;
@@ -65,8 +112,9 @@ export type PassOutcome = {
 };
 
 export async function runTradingPass(): Promise<PassOutcome> {
-  const [snapshot, storedConfig, halt] = await Promise.all([
+  const [snapshot, fxQuotes, storedConfig, halt] = await Promise.all([
     fetchSnapshot(),
+    fetchFxQuotes().catch(() => []),
     readConfig(),
     readHalt(),
   ]);
@@ -75,6 +123,8 @@ export async function runTradingPass(): Promise<PassOutcome> {
   for (const q of snapshot.quotes) {
     if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
   }
+  // FX pair rates, keyed by pair symbol — the key FX fills and marks share.
+  for (const [symbol, rate] of fxPrices(fxQuotes)) prices.set(symbol, rate);
 
   const fund = await getFundState(prices);
 
@@ -129,16 +179,26 @@ export async function runTradingPass(): Promise<PassOutcome> {
     }
   });
 
-  const opportunities = scan({
-    config,
-    snapshot,
-    fundingHistory,
-    daysHeldAboveThreshold,
-    halted: false,
-  });
+  const dataAgeSeconds = (Date.now() - snapshot.asOf) / 1000;
+
+  // Accrue FX carry on positions held since the last pass, BEFORE any new
+  // entries — a position starts earning carry the pass after it opens, never
+  // the instant it opens. This books the interest differential as funding, the
+  // same mechanism crypto uses.
+  await accrueCarry(fxQuotes);
+
+  const existingFills = await readFills();
+  const fundingBefore = await readFundingPayments();
+
+  const tier = resolveTier(fund.navUsd, daysHeldAboveThreshold, "T0").current;
+
+  const opportunities = [
+    ...scan({ config, snapshot, fundingHistory, daysHeldAboveThreshold, halted: false }),
+    ...scanForex({ config, quotes: fxQuotes, tier, dataAgeSeconds, halted: false }),
+  ];
 
   const venue = new SimulatedVenue();
-  venue.setBooks(booksFromQuotes(snapshot.quotes));
+  venue.setBooks([...booksFromQuotes(snapshot.quotes), ...fxBooks(fxQuotes)]);
 
   const result = await runPaperPass({
     config,
@@ -146,10 +206,10 @@ export async function runTradingPass(): Promise<PassOutcome> {
     venue,
     prices,
     halted: false,
-    dataAgeSeconds: (Date.now() - snapshot.asOf) / 1000,
+    dataAgeSeconds,
     daysHeldAboveThreshold,
-    existingFills: await readFills(),
-    funding: await readFundingPayments(),
+    existingFills,
+    funding: fundingBefore,
   });
 
   const orders = result.decisions.flatMap((d) => (d.executed ? d.orders : []));

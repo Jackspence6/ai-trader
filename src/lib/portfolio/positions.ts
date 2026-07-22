@@ -185,10 +185,14 @@ export function buildPositions(
     byKey.set(k, applyFill(byKey.get(k) ?? null, f));
   }
 
-  // Funding attaches to the perp position for that venue/asset/sleeve.
+  // Funding attaches to the perp position for that venue/asset/sleeve. Crypto
+  // funding is always on a perp; FX carry accrues on a spot position (spot FX
+  // has no perp), so fall back to the spot leg when there is no perp — matching
+  // by (sleeve, venue, asset) with market as the tiebreak.
   for (const p of funding) {
-    const k = `${p.sleeveId}:${p.venue}:${p.asset}:perp`;
-    const pos = byKey.get(k);
+    const pos =
+      byKey.get(`${p.sleeveId}:${p.venue}:${p.asset}:perp`) ??
+      byKey.get(`${p.sleeveId}:${p.venue}:${p.asset}:spot`);
     if (pos) pos.fundingUsd += p.amountUsd;
   }
 

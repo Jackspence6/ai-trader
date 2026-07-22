@@ -24,7 +24,7 @@
 import { evaluateGate, type GateInput, type RejectionCode } from "@/lib/calc/gate";
 import { resolveTier, type Tier } from "@/lib/calc/tiers";
 import { bindingMinNotional } from "@/lib/calc/costs";
-import { computePortfolio, sleeveForStrategy } from "@/lib/portfolio/sleeves";
+import { computePortfolio, sleeveById, sleeveForStrategy } from "@/lib/portfolio/sleeves";
 import {
   buildPositions,
   countLogicalPositions,
@@ -107,6 +107,14 @@ function planLegs(
     ];
   }
 
+  if (opp.strategy === "F1") {
+    // "fx LONG EURUSD" / "fx SHORT USDZAR" — a single spot leg on the FX venue,
+    // held in the carry-earning direction.
+    const m = opp.route.match(/^fx (LONG|SHORT) (\S+)$/);
+    if (!m) return null;
+    return [{ venue: "fx", market: "spot", side: m[1] === "LONG" ? "buy" : "sell" }];
+  }
+
   return null;
 }
 
@@ -173,6 +181,17 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
 
     const marked = markPositions(buildPositions(fills, ctx.funding), prices);
     const sleevePositions = marked.filter((p) => p.sleeveId === sleeveId && p.qty !== 0);
+
+    // The tier's concurrent-position budget is applied PER ACCOUNT. The crypto
+    // and forex books are separately-mandated and uncorrelated — the whole
+    // reason to hold both — so a crypto position must not consume the slot a
+    // forex position would use, and vice versa. Counting them together would
+    // freeze one book the moment the other opened a trade, which is exactly
+    // what happened at the smallest tier before this split.
+    const account = sleeveById(sleeveId)?.assetClass ?? "crypto";
+    const accountPositions = marked.filter(
+      (p) => p.qty !== 0 && (sleeveById(p.sleeveId)?.assetClass ?? "crypto") === account,
+    );
     const deployedUsd = sleevePositions.reduce(
       (a, p) => a + Math.abs(p.marketValueUsd ?? 0),
       0,
@@ -216,9 +235,18 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
       navUsd: config.navUsd,
       freeBalanceUsd: Math.max(config.navUsd - deployedUsd, 0),
       capitalRequiredUsd: opp.capitalRequiredUsd,
-      openPositions: countLogicalPositions(marked),
+      // Per account — the tier's position budget is spent separately by each book.
+      openPositions: countLogicalPositions(accountPositions),
       riskTierDeployedUsd: deployedUsd,
-      leverage: config.perpLeverage,
+      // A trade never requests more leverage than its own sleeve permits. The
+      // engine-wide perp leverage is the ceiling, but a low-leverage sleeve
+      // (FX carry at 2x, a spot-hold sleeve at 1x) caps it further — otherwise
+      // every such trade would be rejected for requesting leverage it never
+      // actually needs.
+      leverage: Math.min(
+        config.perpLeverage,
+        sleeveState?.def.limits.maxLeverage ?? config.perpLeverage,
+      ),
       maxLeverage: config.maxLeverage,
       venueHealthy: true,
       dataAgeSeconds: ctx.dataAgeSeconds,

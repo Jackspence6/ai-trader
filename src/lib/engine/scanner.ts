@@ -32,7 +32,7 @@ import type { SleeveContext } from "@/lib/calc/gate";
 import type { MarketSnapshot, Quote } from "@/lib/market/types";
 import type { EngineConfig } from "./config";
 
-export type StrategyCode = "L1" | "L2" | "L3";
+export type StrategyCode = "L1" | "L2" | "L3" | "F1" | "F2";
 
 export type ScoredOpportunity = {
   id: string;
@@ -89,7 +89,11 @@ const STRATEGY_NAMES: Record<StrategyCode, string> = {
   L1: "Funding carry",
   L2: "Cross-venue funding spread",
   L3: "Stablecoin peg",
+  F1: "FX carry",
+  F2: "FX trend",
 };
+
+export { STRATEGY_NAMES };
 
 /** Group quotes by asset, then by venue and market kind. */
 function index(quotes: Quote[]) {

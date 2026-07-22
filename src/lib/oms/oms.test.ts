@@ -446,6 +446,81 @@ describe("paper engine", () => {
   });
 });
 
+describe("paper engine — FX carry (F1)", () => {
+  function fxOpportunity(over: Partial<ScoredOpportunity> = {}): ScoredOpportunity {
+    return {
+      ...opportunity(),
+      id: "F1-USDZAR",
+      strategy: "F1",
+      strategyName: "FX carry",
+      asset: "USDZAR",
+      route: "fx SHORT USDZAR",
+      sleeveId: "fx-carry",
+      sleeveName: "FX Carry",
+      notionalUsd: 300,
+      capitalRequiredUsd: 150,
+      ...over,
+    };
+  }
+
+  function fxConfig() {
+    return config({
+      sleeves: DEFAULT_CONFIG.sleeves.map((s) =>
+        s.sleeveId === "fx-carry" ? { ...s, allocatedUsd: 1_500, enabled: true } : s,
+      ),
+    });
+  }
+
+  function fxVenue() {
+    const v = new SimulatedVenue();
+    v.setBooks([
+      { asset: "USDZAR", venue: "fx", market: "spot", bid: 16.497, ask: 16.503, spreadBps: 35, topOfBookUsd: 5_000_000 },
+    ]);
+    return v;
+  }
+
+  it("places a single short spot leg on the fx venue", async () => {
+    const r = await runPaperPass({
+      config: fxConfig(),
+      opportunities: [fxOpportunity()],
+      venue: fxVenue(),
+      prices: new Map([["USDZAR", 16.5]]),
+      halted: false,
+      dataAgeSeconds: 1,
+      daysHeldAboveThreshold: 30,
+    });
+
+    expect(r.executed).toBe(1);
+    expect(r.fills).toHaveLength(1);
+    const f = r.fills[0];
+    expect(f.venue).toBe("fx");
+    expect(f.asset).toBe("USDZAR");
+    expect(f.market).toBe("spot");
+    expect(f.side).toBe("sell"); // SHORT
+    // A sell fills BELOW mid — the simulator crosses the spread against us.
+    expect(f.price).toBeLessThan(16.5);
+    expect(f.feeUsd).toBeGreaterThan(0);
+  });
+
+  it("marks the resulting position and attributes it to the forex sleeve", async () => {
+    const r = await runPaperPass({
+      config: fxConfig(),
+      opportunities: [fxOpportunity()],
+      venue: fxVenue(),
+      prices: new Map([["USDZAR", 16.5]]),
+      halted: false,
+      dataAgeSeconds: 1,
+      daysHeldAboveThreshold: 30,
+    });
+    const marked = markPositions(buildPositions(r.fills), new Map([["USDZAR", 16.5]]));
+    const fx = marked.find((p) => p.asset === "USDZAR");
+    expect(fx).toBeDefined();
+    expect(fx!.sleeveId).toBe("fx-carry");
+    expect(fx!.qty).toBeLessThan(0); // short
+    expect(fx!.marketValueUsd).not.toBeNull();
+  });
+});
+
 describe("edge accuracy", () => {
   const decision = (over: Partial<PaperDecision> = {}): PaperDecision => ({
     opportunityId: "a",
