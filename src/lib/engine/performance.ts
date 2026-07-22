@@ -17,6 +17,13 @@
 import { readLog } from "@/lib/store/kv";
 import { readFills, readFundingPayments } from "@/lib/oms/store";
 import { buildPositions, markPositions, type Fill } from "@/lib/portfolio/positions";
+import {
+  reconstructTrades,
+  tradeStats,
+  type CompletedTrade,
+  type OpenTrade,
+  type TradeStats,
+} from "@/lib/portfolio/trades";
 import { TRADE_LOG, type TradePassRecord } from "./pass";
 import { REJECTION_LABELS, type RejectionCode } from "@/lib/calc/gate";
 
@@ -215,6 +222,25 @@ export function activity(passes: TradePassRecord[]): ActivitySummary {
   };
 }
 
+/** Exits aggregated across passes, by reason — how the book has been closing. */
+export function exitSummary(passes: TradePassRecord[]): {
+  total: number;
+  byReason: { reason: string; count: number }[];
+} {
+  const counts = new Map<string, number>();
+  for (const p of passes) {
+    for (const [reason, n] of Object.entries(p.exits ?? {})) {
+      counts.set(reason, (counts.get(reason) ?? 0) + n);
+    }
+  }
+  return {
+    total: [...counts.values()].reduce((a, b) => a + b, 0),
+    byReason: [...counts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
+
 export type PerformanceReport = {
   activity: ActivitySummary;
   byStrategy: Attribution[];
@@ -225,6 +251,11 @@ export type PerformanceReport = {
   costAccuracy: CostAccuracy[];
   /** NAV over time, one point per pass. */
   navSeries: { ts: number; navUsd: number }[];
+  /** Round-trip trades reconstructed from the fill log. */
+  completedTrades: CompletedTrade[];
+  openTrades: OpenTrade[];
+  tradeStats: TradeStats;
+  exits: ReturnType<typeof exitSummary>;
 };
 
 export async function buildReport(
@@ -237,6 +268,8 @@ export async function buildReport(
     readLog<TradePassRecord>(TRADE_LOG, passLimit),
   ]);
 
+  const trades = reconstructTrades(fills, funding);
+
   return {
     activity: activity(passes),
     byStrategy: attribute(fills, funding, prices, "strategy"),
@@ -246,5 +279,9 @@ export async function buildReport(
     blockers: blockers(passes),
     costAccuracy: costAccuracy(passes),
     navSeries: passes.map((p) => ({ ts: p.ts, navUsd: p.navAfter })),
+    completedTrades: trades.completed,
+    openTrades: trades.open,
+    tradeStats: tradeStats(trades.completed),
+    exits: exitSummary(passes),
   };
 }

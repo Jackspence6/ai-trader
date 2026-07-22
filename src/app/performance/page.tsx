@@ -24,7 +24,25 @@ import type {
   CostAccuracy,
   PerformanceReport,
 } from "@/lib/engine/performance";
-import { cx, Micro, Panel, Stat, Tag } from "@/components/ui";
+import type { CompletedTrade, OpenTrade } from "@/lib/portfolio/trades";
+import { cx, Delta, Micro, Panel, Stat, Tag } from "@/components/ui";
+
+const EXIT_LABELS: Record<string, string> = {
+  funding_inverted: "Funding inverted",
+  spread_inverted: "Spread inverted",
+  fx_carry_decayed: "FX carry decayed",
+  stop_loss: "Stop loss",
+};
+
+const ACCOUNT_TEXT: Record<string, string> = { crypto: "text-accent", forex: "text-fx" };
+
+function humanDuration(ms: number): string {
+  const m = ms / 60000;
+  if (m < 60) return `${m.toFixed(0)}m`;
+  const h = m / 60;
+  if (h < 48) return `${h.toFixed(1)}h`;
+  return `${(h / 24).toFixed(1)}d`;
+}
 
 type Response = {
   report: PerformanceReport;
@@ -103,6 +121,9 @@ export default function PerformancePage() {
       </div>
 
       {r && r.navSeries.length > 1 && <NavLine series={r.navSeries} />}
+
+      {/* --------------------------------------- 1b · closed trades & win/loss */}
+      {r && <TradingLedger report={r} />}
 
       {/* ------------------------------------------ 2 · where is it working? */}
       <Panel
@@ -426,5 +447,180 @@ function Td({ children, right }: { children: React.ReactNode; right?: boolean })
     >
       {children}
     </td>
+  );
+}
+
+/* ---------------------------------------------------- 1b · trading ledger */
+
+function TradingLedger({ report }: { report: PerformanceReport }) {
+  const s = report.tradeStats;
+  const completed = report.completedTrades;
+  const open = report.openTrades;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Panel>
+          <Stat label="CLOSED TRADES" sub={<span className="text-dim">{open.length} still open</span>}>
+            <span className="tnum text-[19px] text-ink">{s.count}</span>
+          </Stat>
+        </Panel>
+        <Panel>
+          <Stat
+            label="WIN RATE"
+            sub={<span className="text-dim">{s.wins}W / {s.losses}L</span>}
+          >
+            <span className={cx("tnum text-[19px]", s.winRate >= 0.5 ? "text-up" : "text-muted")}>
+              {s.count > 0 ? `${(s.winRate * 100).toFixed(0)}%` : "—"}
+            </span>
+          </Stat>
+        </Panel>
+        <Panel>
+          <Stat label="EXPECTANCY" sub={<span className="text-dim">net per trade</span>}>
+            <span className={cx("text-[15px]", s.expectancyUsd >= 0 ? "text-up" : "text-down")}>
+              <Money usd={s.expectancyUsd} sign />
+            </span>
+          </Stat>
+        </Panel>
+        <Panel>
+          <Stat label="PROFIT FACTOR" sub={<span className="text-dim">wins ÷ losses</span>}>
+            <span
+              className={cx(
+                "tnum text-[19px]",
+                s.profitFactor === null ? "text-muted" : s.profitFactor >= 1 ? "text-up" : "text-down",
+              )}
+            >
+              {s.profitFactor === null ? "—" : s.profitFactor.toFixed(2)}
+            </span>
+          </Stat>
+        </Panel>
+        <Panel>
+          <Stat label="CARRY EARNED" sub={<span className="text-dim">funding, closed trades</span>}>
+            <span className={cx((s.totalFundingUsd ?? 0) >= 0 ? "text-up" : "text-down")}>
+              <Money usd={s.totalFundingUsd ?? 0} sign />
+            </span>
+          </Stat>
+        </Panel>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
+        <Panel label="CLOSED TRADES" hint="ROUND TRIPS · REBUILT FROM FILLS" flush>
+          {completed.length === 0 ? (
+            <div className="p-4 text-[12px] text-dim">
+              No trades have closed yet. When the exit manager closes a trade —
+              funding inverted, spread gone, carry decayed, or a stop — it lands
+              here with its realised result.
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full text-[12px]">
+                <thead className="sticky top-0 bg-panel">
+                  <tr className="border-b border-line">
+                    <Th>WHEN</Th>
+                    <Th>BOOK</Th>
+                    <Th>TRADE</Th>
+                    <Th right>HELD</Th>
+                    <Th right>CARRY</Th>
+                    <Th right>NET</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completed.slice(0, 40).map((t, i) => (
+                    <TradeRow key={`${t.sleeveId}-${t.closedAt}-${i}`} t={t} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
+        <div className="space-y-3">
+          <Panel label="OPEN TRADES" hint="LIVE · MARKED CONTINUOUSLY" flush>
+            {open.length === 0 ? (
+              <div className="p-4 text-[12px] text-dim">Nothing open right now.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <Th>BOOK</Th>
+                      <Th>TRADE</Th>
+                      <Th right>AGE</Th>
+                      <Th right>CARRY</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {open.map((t: OpenTrade, i) => (
+                      <tr key={`${t.sleeveId}-${t.asset}-${i}`} className="border-b border-line/60">
+                        <Td>
+                          <span className={cx("micro", ACCOUNT_TEXT[t.account] ?? "text-muted")}>
+                            {t.account.toUpperCase()}
+                          </span>
+                        </Td>
+                        <Td>
+                          <span className="text-ink">{t.asset}</span>
+                          <span className="micro ml-2 text-dim">{t.strategy}</span>
+                        </Td>
+                        <Td right><span className="tnum text-dim">{humanDuration(t.ageMs)}</span></Td>
+                        <Td right>
+                          <span className={cx("tnum", t.fundingUsd >= 0 ? "text-up" : "text-down")}>
+                            <Money usd={t.fundingUsd} sign />
+                          </span>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+
+          <Panel label="HOW TRADES CLOSED" hint="EXIT REASONS">
+            {report.exits.total === 0 ? (
+              <div className="text-[11px] text-dim">No exits yet.</div>
+            ) : (
+              <ul className="space-y-2">
+                {report.exits.byReason.map((e) => (
+                  <li key={e.reason} className="flex items-center justify-between gap-3 text-[12px]">
+                    <span className="text-muted">{EXIT_LABELS[e.reason] ?? e.reason}</span>
+                    <span className="tnum text-ink">{e.count}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TradeRow({ t }: { t: CompletedTrade }) {
+  return (
+    <tr className="border-b border-line/60 hover:bg-raised/40">
+      <Td>
+        <span className="tnum text-dim">
+          {new Date(t.closedAt).toISOString().replace("T", " ").slice(5, 16)}
+        </span>
+      </Td>
+      <Td>
+        <span className={cx("micro", ACCOUNT_TEXT[t.account] ?? "text-muted")}>
+          {t.account.toUpperCase()}
+        </span>
+      </Td>
+      <Td>
+        <span className="text-ink">{t.asset}</span>
+        <span className="micro ml-2 text-dim">{t.strategy}</span>
+      </Td>
+      <Td right><span className="tnum text-dim">{humanDuration(t.durationMs)}</span></Td>
+      <Td right>
+        <span className={cx("tnum", t.fundingUsd >= 0 ? "text-up" : "text-down")}>
+          <Money usd={t.fundingUsd} sign />
+        </span>
+      </Td>
+      <Td right>
+        <Delta value={t.netUsd} prefix="$" />
+      </Td>
+    </tr>
   );
 }
