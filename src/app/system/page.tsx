@@ -13,6 +13,7 @@
 import { useLive } from "@/lib/live";
 import type { LivenessState } from "@/lib/recorder/heartbeat";
 import type { RecordingSummary } from "@/lib/recorder/store";
+import type { LoopHealth } from "@/lib/engine/health";
 import { cx, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 type RecordingsResponse = {
@@ -20,6 +21,21 @@ type RecordingsResponse = {
   summary: RecordingSummary;
   liveness: LivenessState;
   stateBackend: string;
+};
+
+type EngineResponse = {
+  health: LoopHealth;
+  recent: {
+    ts: number;
+    scored: number;
+    executed: number;
+    closed: number;
+    openPositions: number;
+    navAfter: number;
+    rejections: Record<string, number>;
+    exits: Record<string, number>;
+    skipped: string | null;
+  }[];
 };
 
 function bytes(n: number): string {
@@ -54,12 +70,14 @@ export default function SystemPage() {
     "/api/recordings",
     20_000,
   );
+  const engine = useLive<EngineResponse>("/api/engine", 30_000);
 
   const live = data?.liveness;
   const sum = data?.summary;
 
   return (
     <div className="space-y-3 p-3">
+      <LoopBanner health={engine.data?.health} />
       <RecorderBanner liveness={live} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -104,6 +122,10 @@ export default function SystemPage() {
         </Panel>
 
         <div className="space-y-3">
+          <Panel label="TRADING LOOP" hint="DERIVED FROM THE PASS LOG" flush>
+            <LoopDetail engine={engine.data} />
+          </Panel>
+
           <Panel label="RECORDER PROCESS" hint="LIVENESS FROM PID CHECK">
             <ProcessDetail liveness={live} />
           </Panel>
@@ -161,6 +183,138 @@ export default function SystemPage() {
           day it is not running is evidence that cannot be recovered later.
         </p>
       </Panel>
+    </div>
+  );
+}
+
+function LoopBanner({ health }: { health?: LoopHealth }) {
+  if (!health) {
+    return (
+      <div className="flex items-center gap-2 border border-line-bright bg-raised/30 px-3 py-2.5">
+        <StatusDot state="idle" />
+        <span className="text-[12px] text-dim">Checking trading loop…</span>
+      </div>
+    );
+  }
+
+  if (!health.everRan || health.state === "stopped") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 border border-down/30 bg-down/5 px-3 py-2.5">
+        <Tag tone="down">{health.everRan ? "LOOP STOPPED" : "LOOP NEVER RAN"}</Tag>
+        <span className="text-[12px] text-muted">
+          {health.everRan
+            ? `No pass in ${duration((health.lastPassAgeSeconds ?? 0) * 1000)} against a ${Math.round(
+                (health.medianIntervalSeconds ?? 0) / 60,
+              )}m cadence. No trading decisions are being made.`
+            : "No trading pass has ever been recorded."}
+        </span>
+        <code className="micro ml-auto border border-line-bright px-1.5 py-1 text-dim">
+          pnpm trade
+        </code>
+      </div>
+    );
+  }
+
+  // A running loop that scores nothing pass after pass is blind, not healthy —
+  // every venue fetch failing looks exactly like this.
+  if (health.zeroScoredStreak >= 3) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 border border-warn/30 bg-warn/5 px-3 py-2.5">
+        <Tag tone="warn">LOOP BLIND</Tag>
+        <span className="text-[12px] text-muted">
+          {health.zeroScoredStreak} consecutive passes scored zero opportunities —
+          check venue connectivity.
+        </span>
+      </div>
+    );
+  }
+
+  const tone = health.state === "running" ? "up" : "warn";
+  return (
+    <div
+      className={cx(
+        "flex flex-wrap items-center gap-2 border px-3 py-2.5",
+        tone === "up" ? "border-up/25 bg-up/5" : "border-warn/30 bg-warn/5",
+      )}
+    >
+      <Tag tone={tone}>{health.state === "running" ? "LOOP RUNNING" : "LOOP LATE"}</Tag>
+      <span className="text-[12px] text-muted">
+        last pass {Math.round(health.lastPassAgeSeconds ?? 0)}s ago
+        {health.medianIntervalSeconds &&
+          ` · cadence ~${Math.round(health.medianIntervalSeconds / 60)}m`}
+        {` · window: ${health.executed} entered, ${health.closed} closed over ${health.passes} passes`}
+        {health.lastSkipped && ` · last pass skipped: ${health.lastSkipped}`}
+      </span>
+    </div>
+  );
+}
+
+function LoopDetail({ engine }: { engine: EngineResponse | null }) {
+  if (!engine || engine.recent.length === 0) {
+    return (
+      <p className="p-3 text-[11px] leading-relaxed text-dim">
+        No passes recorded yet. The loop runs via{" "}
+        <code className="text-muted">pnpm trade</code> on any box that stays up,
+        or the deployment cron.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="border-b border-line">
+            <Th>PASS</Th>
+            <Th right>SCORED</Th>
+            <Th right>IN</Th>
+            <Th right>OUT</Th>
+            <Th right>OPEN</Th>
+            <Th right>NAV</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {engine.recent.slice(0, 10).map((r) => (
+            <tr key={r.ts} className="border-b border-line/60 hover:bg-raised/40">
+              <Td>
+                <span
+                  className="tnum text-muted"
+                  title={r.skipped ?? Object.entries(r.rejections)
+                    .map(([k, n]) => `${k}: ${n}`)
+                    .join(" · ")}
+                >
+                  {new Date(r.ts).toISOString().slice(11, 19)}
+                </span>
+              </Td>
+              <Td right>
+                <span className={cx("tnum", r.scored === 0 && !r.skipped ? "text-warn" : "")}>
+                  {r.scored}
+                </span>
+              </Td>
+              <Td right>
+                <span className={cx("tnum", r.executed > 0 ? "text-up" : "text-dim")}>
+                  {r.executed}
+                </span>
+              </Td>
+              <Td right>
+                <span className={cx("tnum", r.closed > 0 ? "text-warn" : "text-dim")}>
+                  {r.closed}
+                </span>
+              </Td>
+              <Td right>
+                <span className="tnum">{r.openPositions}</span>
+              </Td>
+              <Td right>
+                <span className="tnum">{r.navAfter.toFixed(2)}</span>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="px-3 py-2.5 text-[11px] leading-relaxed text-dim">
+        Hover a pass for its rejection breakdown. UTC times. The loop process
+        loads code once at start — restart it after deploying engine changes.
+      </p>
     </div>
   );
 }

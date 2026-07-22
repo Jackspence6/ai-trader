@@ -20,19 +20,24 @@
  */
 
 import { roundTripCost, type LegSpec } from "@/lib/calc/costs";
-import { evaluateGate } from "@/lib/calc/gate";
+import { evaluateGate, evaluateTrendGate } from "@/lib/calc/gate";
 import type { resolveTier } from "@/lib/calc/tiers";
 import { computePortfolio, type PortfolioState } from "@/lib/portfolio/sleeves";
 import type { SleeveContext } from "@/lib/calc/gate";
-import { DEFAULT_SWAP_MARKUP_APR, evaluateFxCarry } from "@/lib/calc/fxsignal";
+import {
+  DEFAULT_SWAP_MARKUP_APR,
+  evaluateFxCarry,
+  evaluateFxTrend,
+  trendStopFraction,
+} from "@/lib/calc/fxsignal";
 import { fxSpreadBps, FX_VENUE } from "@/lib/market/fxbook";
 import type { FxQuote } from "@/lib/market/forex";
 import type { EngineConfig } from "./config";
 import { STRATEGY_NAMES, type ScoredOpportunity } from "./scanner";
 
-/** Sleeve context for the FX carry sleeve, or undefined if it is not configured. */
-function fxCarrySleeve(portfolio: PortfolioState): SleeveContext | undefined {
-  const st = portfolio.sleeves.find((s) => s.def.id === "fx-carry");
+/** Sleeve context for one FX sleeve, or undefined if it is not configured. */
+function fxSleeve(portfolio: PortfolioState, id: string): SleeveContext | undefined {
+  const st = portfolio.sleeves.find((s) => s.def.id === id);
   if (!st) return undefined;
   return {
     id: st.def.id,
@@ -48,6 +53,11 @@ function fxCarrySleeve(portfolio: PortfolioState): SleeveContext | undefined {
     minimumViableUsd: st.minimumViableUsd,
   };
 }
+
+const fxCarrySleeve = (p: PortfolioState) => fxSleeve(p, "fx-carry");
+
+/** Loss at the stop as a fraction of the trend sleeve's capital. */
+export const TREND_RISK_PER_TRADE = 0.01;
 
 /**
  * The horizon an FX carry is scored over.
@@ -204,4 +214,100 @@ export function scanForex(ctx: ForexScanContext): ScoredOpportunity[] {
   }
 
   return out.sort((a, b) => b.netBps - a.netBps);
+}
+
+export type ForexTrendScanContext = ForexScanContext & {
+  /** Daily closes per pair symbol, oldest first — the trend signal's input. */
+  closes: Record<string, number[]>;
+};
+
+/**
+ * Score every followed pair for F2 trend.
+ *
+ * A trend bet has no net edge in basis points — its expectation lives across
+ * many trades — so the economics fields are zero and the decision runs through
+ * `evaluateTrendGate`: engaged signal, honest volatility, a real invalidation
+ * distance, and a size that fixes the loss at the stop. What IS reported per
+ * opportunity is the trend context itself, which the paper engine re-gates
+ * against live position state.
+ */
+export function scanForexTrend(ctx: ForexTrendScanContext): ScoredOpportunity[] {
+  const { config, quotes, tier } = ctx;
+
+  const portfolio = computePortfolio(config.navUsd, config.sleeves);
+  const sleeve = fxSleeve(portfolio, "fx-trend");
+  const leverage = sleeve?.maxLeverage ?? 3;
+
+  const out: ScoredOpportunity[] = [];
+
+  for (const q of quotes) {
+    const trend = evaluateFxTrend(q.symbol, ctx.closes[q.symbol] ?? []);
+    if (trend.direction === "flat" && !trend.engaged && trend.fast === null) {
+      // Not even enough history for the slow average — nothing to report.
+      continue;
+    }
+
+    const stop = trend.annualisedVol ? trendStopFraction(trend.annualisedVol) : 0;
+
+    const decision = evaluateTrendGate({
+      tier,
+      sleeve,
+      engaged: trend.engaged,
+      annualisedVol: trend.annualisedVol,
+      stopDistanceFraction: stop,
+      targetAnnualVol: config.targetAnnualVol,
+      riskPerTradeFraction: TREND_RISK_PER_TRADE,
+      openPositions: 0,
+      leverage,
+      maxLeverage: config.maxLeverage,
+      venueMinNotionalUsd: 10,
+      staleData: q.stale,
+      globalHalt: ctx.halted,
+    });
+
+    const side =
+      trend.direction === "long" ? "LONG" : trend.direction === "short" ? "SHORT" : "FLAT";
+    const sized = decision.allowed ? decision.sizedNotionalUsd : 0;
+
+    out.push({
+      id: `F2-${q.symbol}`,
+      ts: q.ts,
+      strategy: "F2",
+      strategyName: STRATEGY_NAMES.F2,
+      asset: q.symbol,
+      route: `fx ${side} ${q.symbol}`,
+      riskTier: "medium",
+      sleeveId: sleeve?.id ?? "fx-trend",
+      sleeveName: sleeve?.name ?? "FX Trend",
+      // No edge claim — see the module comment. The spread cost is still real
+      // and reported so the feed shows what entry would cost.
+      grossBps: 0,
+      feesBps: 0,
+      spreadBps: fxSpreadBps(q.symbol),
+      slippageBps: 0,
+      dragBps: 0,
+      netBps: 0,
+      netApr: null,
+      breakevenDays: null,
+      capitalRequiredUsd: sized / Math.max(leverage, 1),
+      notionalUsd: sized,
+      expectedProfitUsd: 0,
+      trend:
+        trend.direction === "flat"
+          ? undefined
+          : {
+              direction: trend.direction,
+              strengthPct: trend.strengthPct,
+              annualisedVol: trend.annualisedVol,
+              stopDistanceFraction: stop,
+              stale: q.stale,
+            },
+      taken: false,
+      wouldTake: decision.allowed,
+      rejectionCode: decision.allowed ? null : decision.code,
+      rejectionDetail: decision.allowed ? trend.note : decision.detail,
+    });
+  }
+
+  return out;
 }

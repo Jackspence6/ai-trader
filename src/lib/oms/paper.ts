@@ -21,12 +21,19 @@
  *   3. It exercises the order path end to end while the blast radius is zero.
  */
 
-import { evaluateGate, type GateInput, type RejectionCode } from "@/lib/calc/gate";
+import {
+  evaluateGate,
+  evaluateTrendGate,
+  type GateInput,
+  type RejectionCode,
+} from "@/lib/calc/gate";
+import { TREND_RISK_PER_TRADE } from "@/lib/engine/forexscan";
 import { resolveTier, type Tier } from "@/lib/calc/tiers";
 import { bindingMinNotional } from "@/lib/calc/costs";
 import { computePortfolio, sleeveById, sleeveForStrategy } from "@/lib/portfolio/sleeves";
 import {
   buildPositions,
+  capitalConsumedUsd,
   countLogicalPositions,
   markPositions,
   type Fill,
@@ -107,9 +114,15 @@ function planLegs(
     ];
   }
 
-  if (opp.strategy === "F1") {
-    // "fx LONG EURUSD" / "fx SHORT USDZAR" — a single spot leg on the FX venue,
-    // held in the carry-earning direction.
+  if (opp.strategy === "L3") {
+    // "Binance USDC repeg" — buy the discounted stable, one spot leg.
+    const venue = opp.route.split(" ")[0];
+    return [{ venue, market: "spot", side: "buy" }];
+  }
+
+  if (opp.strategy === "F1" || opp.strategy === "F2") {
+    // "fx LONG EURUSD" / "fx SHORT USDZAR" — a single spot leg on the FX venue.
+    // Carry holds the differential-earning direction; trend holds the signal's.
     const m = opp.route.match(/^fx (LONG|SHORT) (\S+)$/);
     if (!m) return null;
     return [{ venue: "fx", market: "spot", side: m[1] === "LONG" ? "buy" : "sell" }];
@@ -159,7 +172,18 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
   const { config, opportunities, venue, prices } = ctx;
 
   const tierState = resolveTier(config.navUsd, ctx.daysHeldAboveThreshold ?? 0, "T0");
-  const tier: Tier = tierState.current;
+
+  // Paper trades at the tier NAV *implies*, not the hold-gated effective tier.
+  //
+  // The promotion hold exists so a lucky NAV spike cannot unlock LIVE capital
+  // limits early — it is a capital-allocation control, the same category as the
+  // two checks `paperMode` already exempts. Applying it to paper had the
+  // effective tier's one-position budget starving the evidence pipeline: with
+  // $10k of paper NAV, one open carry blocked every other candidate for a week
+  // while the hold matured, which is precisely the week paper exists to
+  // measure. Live capital still resolves through `tierState.current`; nothing
+  // here loosens a live limit.
+  const tier: Tier = tierState.implied;
 
   // Position state is rebuilt as we go so that each intent sees the effect of
   // the ones before it in this same pass. Evaluating them all against the
@@ -192,9 +216,19 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
     const accountPositions = marked.filter(
       (p) => p.qty !== 0 && (sleeveById(p.sleeveId)?.assetClass ?? "crypto") === account,
     );
-    const deployedUsd = sleevePositions.reduce(
-      (a, p) => a + Math.abs(p.marketValueUsd ?? 0),
-      0,
+
+    // Capital measured as actually consumed (spot funded in full, perp and FX
+    // legs at margin) — the same basis the entry gate prices capital on. See
+    // capitalConsumedUsd for why gross value is the wrong measure here.
+    const leverageFor = (id: string) =>
+      Math.min(
+        config.perpLeverage,
+        sleeveById(id)?.limits.maxLeverage ?? config.perpLeverage,
+      );
+    const deployedUsd = capitalConsumedUsd(sleevePositions, leverageFor);
+    const totalConsumedUsd = capitalConsumedUsd(
+      marked.filter((p) => p.qty !== 0),
+      leverageFor,
     );
 
     const notionalUsd = opp.notionalUsd;
@@ -233,7 +267,10 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
       breakevenDays: opp.breakevenDays ?? Infinity,
       expectedHoldDays: config.expectedHoldDays,
       navUsd: config.navUsd,
-      freeBalanceUsd: Math.max(config.navUsd - deployedUsd, 0),
+      // Free balance is fund-wide: capital consumed in ANY sleeve is not
+      // available to this one. The per-sleeve budget is enforced separately
+      // via the sleeve context above.
+      freeBalanceUsd: Math.max(config.navUsd - totalConsumedUsd, 0),
       capitalRequiredUsd: opp.capitalRequiredUsd,
       // Per account — the tier's position budget is spent separately by each book.
       openPositions: countLogicalPositions(accountPositions),
@@ -259,11 +296,33 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
     // capital-allocation gates (tier lock and the tier's risk budget) and
     // nothing else — sleeve limits, economics, halt and staleness all apply
     // identically, because paper is only evidence if it is gated like live.
-    const decision = evaluateGate({
-      ...gateInput,
-      strategyMode: "live",
-      paperMode: true,
-    });
+    //
+    // Trend opportunities (F2) go through the trend gate instead: a stop-managed
+    // directional trade has no net edge in bps to threshold, and what it must
+    // prove is bounded loss — an engaged signal, honest volatility, a real
+    // invalidation distance. Same live position state feeds both gates.
+    const decision = opp.trend
+      ? evaluateTrendGate({
+          tier,
+          sleeve: gateInput.sleeve,
+          paperMode: true,
+          engaged: true,
+          annualisedVol: opp.trend.annualisedVol,
+          stopDistanceFraction: opp.trend.stopDistanceFraction,
+          targetAnnualVol: config.targetAnnualVol,
+          riskPerTradeFraction: TREND_RISK_PER_TRADE,
+          openPositions: gateInput.openPositions,
+          leverage: gateInput.leverage,
+          maxLeverage: config.maxLeverage,
+          venueMinNotionalUsd: 10,
+          staleData: opp.trend.stale,
+          globalHalt: ctx.halted,
+        })
+      : evaluateGate({
+          ...gateInput,
+          strategyMode: "live",
+          paperMode: true,
+        });
 
     if (!decision.allowed) {
       decisions.push({

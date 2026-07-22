@@ -352,10 +352,25 @@ describe("sleeve isolation in the gate", () => {
     if (d.allowed) expect(d.sizedNotionalUsd).toBeCloseTo(350, 6);
   });
 
-  it("sizes down to remaining sleeve headroom", () => {
+  it("sizes down to remaining sleeve headroom, converted to notional", () => {
+    // Headroom is CAPITAL ($200 left of $1,000); the trade needs $400 of
+    // capital per $900 of notional, so that headroom funds 200 ÷ (400/900)
+    // = $450 of notional — not $200, which would waste over half the room.
     const d = evaluateGate(
       gateInput({
         intendedNotionalUsd: 900,
+        sleeve: sleeveCtx({ allocatedUsd: 1_000, deployedUsd: 800, maxPositionUsd: 900 }),
+      }),
+    );
+    expect(d.allowed).toBe(true);
+    if (d.allowed) expect(d.sizedNotionalUsd).toBeCloseTo(450, 6);
+  });
+
+  it("sizes headroom one-to-one when capital required equals notional", () => {
+    const d = evaluateGate(
+      gateInput({
+        intendedNotionalUsd: 900,
+        capitalRequiredUsd: 900,
         sleeve: sleeveCtx({ allocatedUsd: 1_000, deployedUsd: 800, maxPositionUsd: 900 }),
       }),
     );

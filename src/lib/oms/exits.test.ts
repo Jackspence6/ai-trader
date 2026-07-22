@@ -61,6 +61,37 @@ describe("exit manager — funding carry (L1)", () => {
     // BOTH legs close — never leave the spot leg naked.
     expect(plans[0].legs).toHaveLength(2);
   });
+
+  it("holds through a negative print while the regime median is still positive", () => {
+    // A single negative interval costs a couple of bp; re-entering costs the
+    // full round trip. The regime, not the print, decides.
+    const plans = evaluateExits(carry(), {
+      ...NO_FX,
+      fundingApr: () => -0.02,
+      fundingMedianApr: () => 0.09,
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("closes when both the print and the regime median are negative", () => {
+    const plans = evaluateExits(carry(), {
+      ...NO_FX,
+      fundingApr: () => -0.02,
+      fundingMedianApr: () => -0.01,
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].reason).toBe("funding_inverted");
+  });
+
+  it("falls back to the print alone when no history is available", () => {
+    const plans = evaluateExits(carry(), {
+      ...NO_FX,
+      fundingApr: () => -0.02,
+      fundingMedianApr: () => undefined,
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].reason).toBe("funding_inverted");
+  });
 });
 
 describe("exit manager — cross-venue spread (L2)", () => {
@@ -122,5 +153,122 @@ describe("exit manager — stop loss", () => {
       { ...NO_FX, fundingApr: () => 0.2 },
     );
     expect(plans).toHaveLength(0);
+  });
+});
+
+describe("exit manager — FX trend (F2)", () => {
+  const trendPos = (over: Partial<MarkedPosition> = {}) => [
+    pos({
+      venue: "fx",
+      market: "spot",
+      asset: "EURUSD",
+      sleeveId: "fx-trend",
+      qty: 300,
+      notionalUsd: 30_000,
+      marketValueUsd: 30_000,
+      totalPnlUsd: 0,
+      ...over,
+    }),
+  ];
+
+  it("holds while the signal still points the held way", () => {
+    const plans = evaluateExits(trendPos(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      fxTrend: () => "long",
+      fxTrendStop: () => 0.02,
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("holds through a FLAT signal — a range is not a reversal", () => {
+    const plans = evaluateExits(trendPos(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      fxTrend: () => "flat",
+      fxTrendStop: () => 0.02,
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("closes when the signal flips against the position", () => {
+    const plans = evaluateExits(trendPos(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      fxTrend: () => "short",
+      fxTrendStop: () => 0.02,
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].reason).toBe("trend_flipped");
+  });
+
+  it("closes on the volatility stop before the generic backstop", () => {
+    // Down 2.5% of notional with a 2% stop: the vol stop fires long before
+    // the 12% backstop would.
+    const plans = evaluateExits(trendPos({ totalPnlUsd: -750 }), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      fxTrend: () => "long",
+      fxTrendStop: () => 0.02,
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].reason).toBe("trend_stopped");
+  });
+
+  it("does not apply the carry-decay rule to a trend position", () => {
+    // A short EURUSD trend position with positive EUR carry would look like a
+    // "decayed carry" to the carry rule — but it is not a carry trade.
+    const plans = evaluateExits(trendPos({ qty: -300 }), {
+      fundingApr: () => undefined,
+      fxPair: () => ({ base: "EUR", quote: "USD" }),
+      fxTrend: () => "short",
+      fxTrendStop: () => 0.02,
+    });
+    expect(plans).toHaveLength(0);
+  });
+});
+
+describe("exit manager — stablecoin peg (L3)", () => {
+  const peg = (over: Partial<MarkedPosition> = {}) => [
+    pos({
+      venue: "Binance",
+      market: "spot",
+      asset: "USDC",
+      sleeveId: "core",
+      qty: 2000,
+      notionalUsd: 1980,
+      totalPnlUsd: 0,
+      ...over,
+    }),
+  ];
+
+  it("holds while the discount persists", () => {
+    const plans = evaluateExits(peg(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      stableDiscount: () => 0.01, // still 1% below par
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("closes when the peg restores", () => {
+    const plans = evaluateExits(peg(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      stableDiscount: () => 0.0001, // back to par, within dust
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].reason).toBe("peg_restored");
+  });
+
+  it("does not confuse a stable position with a crypto carry", () => {
+    // A spot-only stable group must never reach the perp-based carry rules,
+    // and healthy funding elsewhere must not hold it open past the repeg.
+    const plans = evaluateExits(peg(), {
+      ...NO_FX,
+      fundingApr: () => 0.5,
+      stableDiscount: () => 0.0001,
+    });
+    expect(plans[0].reason).toBe("peg_restored");
   });
 });

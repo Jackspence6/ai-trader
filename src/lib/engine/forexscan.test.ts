@@ -11,7 +11,7 @@ import { DEFAULT_CONFIG } from "./config";
 import { defaultAllocations } from "@/lib/portfolio/sleeves";
 import { resolveTier } from "@/lib/calc/tiers";
 import type { FxQuote } from "@/lib/market/forex";
-import { scanForex } from "./forexscan";
+import { scanForex, scanForexTrend } from "./forexscan";
 
 function quote(over: Partial<FxQuote> = {}): FxQuote {
   return {
@@ -110,5 +110,84 @@ describe("scanForex — F1 carry", () => {
       swapMarkupApr: 0.005,
     });
     expect(opps[0].route).toBe("fx LONG AUDUSD");
+  });
+});
+
+describe("scanForexTrend — F2", () => {
+  // 80 daily closes rising ~0.1%/day with alternating wiggle, so the fast
+  // average sits well above the slow one AND the return series has real
+  // variance for the volatility estimate.
+  const uptrend = Array.from(
+    { length: 80 },
+    (_, i) => 100 * (1 + 0.001 * i) + (i % 2 === 0 ? 0.15 : -0.15),
+  );
+  // Flat with the same wiggle: entangled averages, ranging market.
+  const ranging = Array.from({ length: 80 }, (_, i) => 100 + (i % 2 === 0 ? 0.15 : -0.15));
+
+  function configWithFxTrend(navUsd = 5000) {
+    const sleeves = defaultAllocations().map((a) =>
+      a.sleeveId === "fx-trend" ? { ...a, allocatedUsd: 1500, enabled: true } : a,
+    );
+    return { ...DEFAULT_CONFIG, navUsd, sleeves };
+  }
+
+  it("takes an engaged trend in a funded sleeve, sized with a stop", () => {
+    const opps = scanForexTrend({
+      config: configWithFxTrend(),
+      quotes: [quote({ symbol: "EURUSD", base: "EUR", quote: "USD", rate: 1.1 })],
+      tier,
+      dataAgeSeconds: 1,
+      halted: false,
+      closes: { EURUSD: uptrend },
+    });
+    expect(opps).toHaveLength(1);
+    const o = opps[0];
+    expect(o.strategy).toBe("F2");
+    expect(o.route).toBe("fx LONG EURUSD");
+    expect(o.wouldTake).toBe(true);
+    expect(o.notionalUsd).toBeGreaterThan(0);
+    expect(o.trend?.stopDistanceFraction).toBeGreaterThan(0);
+    // Never claims an edge — the honest numbers are the trend context.
+    expect(o.netBps).toBe(0);
+    expect(o.netApr).toBeNull();
+  });
+
+  it("stays flat in a range", () => {
+    const opps = scanForexTrend({
+      config: configWithFxTrend(),
+      quotes: [quote({ symbol: "EURUSD", base: "EUR", quote: "USD", rate: 1.1 })],
+      tier,
+      dataAgeSeconds: 1,
+      halted: false,
+      closes: { EURUSD: ranging },
+    });
+    expect(opps[0].wouldTake).toBe(false);
+    expect(opps[0].rejectionCode).toBe("trend_not_engaged");
+  });
+
+  it("refuses when the trend sleeve is unfunded", () => {
+    const opps = scanForexTrend({
+      config: { ...DEFAULT_CONFIG, navUsd: 5000, sleeves: defaultAllocations() },
+      quotes: [quote({ symbol: "EURUSD", base: "EUR", quote: "USD", rate: 1.1 })],
+      tier,
+      dataAgeSeconds: 1,
+      halted: false,
+      closes: { EURUSD: uptrend },
+    });
+    expect(opps[0].wouldTake).toBe(false);
+    expect(opps[0].rejectionCode).toBe("sleeve_disabled");
+  });
+
+  it("refuses a stale weekend fix even on a strong trend", () => {
+    const opps = scanForexTrend({
+      config: configWithFxTrend(),
+      quotes: [quote({ symbol: "EURUSD", base: "EUR", quote: "USD", rate: 1.1, stale: true })],
+      tier,
+      dataAgeSeconds: 1,
+      halted: false,
+      closes: { EURUSD: uptrend },
+    });
+    expect(opps[0].wouldTake).toBe(false);
+    expect(opps[0].rejectionCode).toBe("market_data_stale");
   });
 });

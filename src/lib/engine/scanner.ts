@@ -67,6 +67,27 @@ export type ScoredOpportunity = {
   fundingApr?: number;
 
   /**
+   * Model-estimated probability that this funding regime persists over the
+   * next week (see lib/ml/persistence.ts). SHADOW ONLY — recorded on every
+   * opportunity so its live track record accrues, but no gate reads it. It
+   * earns gating power the same way a strategy earns capital: evidence first.
+   */
+  persistenceProb?: number;
+
+  /**
+   * Trend context, for stop-managed strategies (F2). The paper engine routes
+   * these through the trend gate — a trend has no net edge in bps, so the
+   * economics fields above are zero and the honest numbers live here.
+   */
+  trend?: {
+    direction: "long" | "short";
+    strengthPct: number;
+    annualisedVol: number | null;
+    stopDistanceFraction: number;
+    stale: boolean;
+  };
+
+  /**
    * Whether this opportunity actually became an order. Always false while the
    * system is in shadow.
    */
@@ -164,6 +185,8 @@ export type ScanContext = {
   /** Current tier id; NAV plus hold period resolve the effective one. */
   currentTierId?: TierId;
   daysHeldAboveThreshold?: number;
+  /** Persistence probability per `${venue}:${asset}`, when the model ran. */
+  persistence?: Record<string, number>;
 };
 
 /**
@@ -341,6 +364,7 @@ function scanCarry(
       notionalUsd,
       expectedProfitUsd: carry.expectedProfitUsd,
       fundingApr: carry.grossApr,
+      persistenceProb: ctx.persistence?.[`${venue}:${asset}`],
       // Live execution requires a linked account and a strategy promoted out of
       // shadow on evidence. Neither exists yet, so nothing is ever taken.
       taken: false,

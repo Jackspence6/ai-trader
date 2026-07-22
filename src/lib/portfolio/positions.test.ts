@@ -15,6 +15,7 @@ import {
   applyFill,
   assetDelta,
   buildPositions,
+  capitalConsumedUsd,
   countLogicalPositions,
   markPositions,
   sleevePnl,
@@ -392,5 +393,64 @@ describe("logical position counting", () => {
       fill({ venue: "hyperliquid", market: "perp", side: "buy", asset: "LINK" }),
     ]);
     expect(countLogicalPositions(ps)).toBe(1);
+  });
+});
+
+describe("capitalConsumedUsd", () => {
+  const prices = new Map([["BTC", 100], ["EURUSD", 100]]);
+  const lev = () => 3;
+
+  it("charges a funding carry the entry-gate measure: spot in full, perp at margin", () => {
+    // 1 BTC spot at $100 + 1 BTC perp short at 3x → 100 + 100/3, not 200.
+    const marked = markPositions(
+      buildPositions([
+        fill({ market: "spot", side: "buy" }),
+        fill({ market: "perp", side: "sell" }),
+      ]),
+      prices,
+    );
+    expect(capitalConsumedUsd(marked, lev)).toBeCloseTo(100 + 100 / 3);
+  });
+
+  it("charges a cross-venue spread margin on both perp legs", () => {
+    const marked = markPositions(
+      buildPositions([
+        fill({ venue: "bybit", market: "perp", side: "sell" }),
+        fill({ venue: "okx", market: "perp", side: "buy" }),
+      ]),
+      prices,
+    );
+    expect(capitalConsumedUsd(marked, lev)).toBeCloseTo(200 / 3);
+  });
+
+  it("treats FX spot as margined, at the sleeve's own leverage", () => {
+    const marked = markPositions(
+      buildPositions([
+        fill({ venue: "fx", market: "spot", side: "buy", asset: "EURUSD", sleeveId: "fx-carry" }),
+      ]),
+      prices,
+    );
+    const leverageFor = (id: string) => (id === "fx-carry" ? 2 : 3);
+    expect(capitalConsumedUsd(marked, leverageFor)).toBeCloseTo(50);
+  });
+
+  it("falls back to entry notional when a leg has no mark", () => {
+    const marked = markPositions(
+      buildPositions([fill({ market: "spot", side: "buy", asset: "NOPRICE" })]),
+      prices,
+    );
+    expect(marked[0].marketValueUsd).toBeNull();
+    expect(capitalConsumedUsd(marked, lev)).toBeCloseTo(100);
+  });
+
+  it("never divides by a leverage below 1 and ignores flat legs", () => {
+    const marked = markPositions(
+      buildPositions([
+        fill({ market: "perp", side: "buy", qty: 1 }),
+        fill({ market: "perp", side: "sell", qty: 1 }),
+      ]),
+      prices,
+    );
+    expect(capitalConsumedUsd(marked, () => 0)).toBe(0);
   });
 });

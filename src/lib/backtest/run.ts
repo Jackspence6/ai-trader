@@ -34,6 +34,13 @@ export type BacktestConfig = {
   points: number;
 };
 
+export type BacktestScenario = {
+  key: string;
+  label: string;
+  costFraction: number;
+  stats: CarryStats;
+};
+
 export type BacktestResult = {
   params: CarryBacktestParams;
   points: number;
@@ -41,15 +48,25 @@ export type BacktestResult = {
   costFraction: number;
   portfolio: { equity: { t: number; cumReturn: number }[]; stats: CarryStats };
   byAsset: { asset: string; stats: CarryStats; points: number }[];
+  /**
+   * The same history under the execution levers actually available: entry
+   * liquidity (taker vs post-only maker) × exit rule (single print vs
+   * regime-confirmed). The detailed portfolio above is the CURRENT live
+   * configuration; the grid shows what each lever is worth.
+   */
+  scenarios: BacktestScenario[];
   caveats: string[];
 };
 
 /** Representative round-trip cost for a carry (Binance spot + perp), as a fraction of one leg's notional. */
-function carryRoundTripFraction(legNotionalUsd = 1_000): number {
+function carryRoundTripFraction(
+  liquidity: "taker" | "maker" = "taker",
+  legNotionalUsd = 1_000,
+): number {
   const leg = (market: "spot" | "perp"): LegSpec => ({
     venue: "binance",
     market,
-    liquidity: "taker",
+    liquidity,
     notionalUsd: legNotionalUsd,
     // Representative majors spread; the historical book depth is not recorded,
     // so a deep book with a small spread is assumed and the fee dominates.
@@ -62,14 +79,30 @@ function carryRoundTripFraction(legNotionalUsd = 1_000): number {
   return cost.totalUsd / legNotionalUsd;
 }
 
+/** Run every asset's series through one parameter set and combine the portfolio. */
+function runScenario(
+  seriesByAsset: { asset: string; series: FundingPoint[] }[],
+  params: CarryBacktestParams,
+) {
+  const byAsset = seriesByAsset.map(({ asset, series }) => {
+    const bt = backtestCarry(series, params);
+    return { asset, bt, stats: carryStats(bt), points: series.length };
+  });
+  return byAsset;
+}
+
 export async function runCarryBacktest(config: BacktestConfig): Promise<BacktestResult> {
+  // The detailed result models the CURRENT live configuration: taker entries
+  // (no maker fill is guaranteed) with the regime-confirmed exit the live exit
+  // manager now uses.
   const params: CarryBacktestParams = {
     minFundingApr: config.minFundingApr,
     minPositiveShare: config.minPositiveShare,
     regimeWindow: config.regimeWindow,
-    roundTripCostFraction: carryRoundTripFraction(),
+    roundTripCostFraction: carryRoundTripFraction("taker"),
     expectedHoldDays: config.expectedHoldDays,
     minNetEdgeBps: config.minNetEdgeBps,
+    exitMedianConfirm: true,
   };
 
   const settled = await Promise.allSettled(
@@ -86,14 +119,62 @@ export async function runCarryBacktest(config: BacktestConfig): Promise<Backtest
     }
   });
 
-  const byAsset = seriesByAsset.map(({ asset, series }) => {
-    const bt = backtestCarry(series, params);
-    return { asset, bt, stats: carryStats(bt), points: series.length };
+  const byAsset = runScenario(seriesByAsset, params);
+
+  const { portEquity, portComposite, maxLen } = combinePortfolio(byAsset);
+
+  // The execution levers, priced on the same history. Maker entries assume
+  // post-only fills at the touch — the optimistic bound, but a defensible one
+  // for carry: entries are not latency-sensitive, so resting into the book and
+  // waiting is a real tactic, not a fantasy fill.
+  const scenarioDefs: { key: string; label: string; liquidity: "taker" | "maker"; confirm: boolean }[] = [
+    { key: "taker-print", label: "Taker entry · single-print exit", liquidity: "taker", confirm: false },
+    { key: "taker-regime", label: "Taker entry · regime exit (live)", liquidity: "taker", confirm: true },
+    { key: "maker-print", label: "Maker entry · single-print exit", liquidity: "maker", confirm: false },
+    { key: "maker-regime", label: "Maker entry · regime exit", liquidity: "maker", confirm: true },
+  ];
+  const scenarios: BacktestScenario[] = scenarioDefs.map((s) => {
+    const costFraction = carryRoundTripFraction(s.liquidity);
+    const scenarioParams: CarryBacktestParams = {
+      ...params,
+      roundTripCostFraction: costFraction,
+      exitMedianConfirm: s.confirm,
+    };
+    const assets = runScenario(seriesByAsset, scenarioParams);
+    const combined = combinePortfolio(assets);
+    return {
+      key: s.key,
+      label: s.label,
+      costFraction,
+      stats: carryStats(combined.portComposite),
+    };
   });
 
-  // Equal-weight portfolio: average per-interval returns across assets, aligned
-  // by index from the most recent point backwards (Binance funding times are
-  // synchronised across assets, so index alignment is timestamp alignment).
+  return {
+    params,
+    points: config.points,
+    periodDays: (maxLen * 8) / 24,
+    costFraction: params.roundTripCostFraction,
+    portfolio: { equity: portEquity, stats: carryStats(portComposite) },
+    byAsset: byAsset.map((a) => ({ asset: a.asset, stats: a.stats, points: a.points })),
+    scenarios,
+    caveats: [
+      "Single-venue funding carry (L1) only — not L2 cross-venue or FX carry.",
+      "Delta-neutral: the price path cancels between legs, so P&L is funding minus costs.",
+      "Round-trip cost is the modelled fee plus a representative spread, charged in full up front.",
+      "Maker scenarios assume every post-only entry fills at the touch — the optimistic bound.",
+      "Returns are on notional; leverage would raise return on capital by L/(L+1).",
+      `Based on the last ${INTERVALS_PER_YEAR_8H > 0 ? Math.round((maxLen * 8) / 24) : 0} days of real Binance funding.`,
+    ],
+  };
+}
+
+/**
+ * Equal-weight portfolio: average per-interval returns across assets, aligned
+ * by index from the most recent point backwards (Binance funding times are
+ * synchronised across assets, so index alignment is timestamp alignment).
+ */
+function combinePortfolio(byAsset: ReturnType<typeof runScenario>) {
   const maxLen = Math.max(0, ...byAsset.map((a) => a.bt.intervalReturns.length));
   const portReturns: number[] = [];
   const portEquity: { t: number; cumReturn: number }[] = [];
@@ -132,19 +213,5 @@ export async function runCarryBacktest(config: BacktestConfig): Promise<Backtest
     intervalsTotal: maxLen,
   };
 
-  return {
-    params,
-    points: config.points,
-    periodDays: (maxLen * 8) / 24,
-    costFraction: params.roundTripCostFraction,
-    portfolio: { equity: portEquity, stats: carryStats(portComposite) },
-    byAsset: byAsset.map((a) => ({ asset: a.asset, stats: a.stats, points: a.points })),
-    caveats: [
-      "Single-venue funding carry (L1) only — not L2 cross-venue or FX carry.",
-      "Delta-neutral: the price path cancels between legs, so P&L is funding minus costs.",
-      "Round-trip cost is the modelled fee plus a representative spread, charged in full up front.",
-      "Returns are on notional; leverage would raise return on capital by L/(L+1).",
-      `Based on the last ${INTERVALS_PER_YEAR_8H > 0 ? Math.round((maxLen * 8) / 24) : 0} days of real Binance funding.`,
-    ],
-  };
+  return { portEquity, portComposite, maxLen };
 }

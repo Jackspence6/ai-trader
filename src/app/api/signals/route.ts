@@ -10,6 +10,12 @@
 import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
 import { UNIVERSE } from "@/lib/market/types";
 import { scan } from "@/lib/engine/scanner";
+import {
+  buildDataset,
+  persistenceProbability,
+  trainLogistic,
+  type FundingSample,
+} from "@/lib/ml/persistence";
 import { readConfig } from "@/lib/engine/store";
 import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
 import { daysHeldAbove } from "@/lib/db/nav";
@@ -36,15 +42,33 @@ export async function GET() {
   // parallel; a failure degrades that asset to "no regime claim" rather than
   // failing the scan.
   const histories = await Promise.allSettled(
-    UNIVERSE.map((a) => fetchBinanceFundingHistory(a, config.fundingRegimeWindow)),
+    UNIVERSE.map((a) =>
+      fetchBinanceFundingHistory(a, Math.max(400, config.fundingRegimeWindow)),
+    ),
   );
 
   const fundingHistory: Record<string, number[]> = {};
+  const fundingSeries: Record<string, FundingSample[]> = {};
   histories.forEach((h, i) => {
     if (h.status === "fulfilled") {
-      fundingHistory[`Binance:${UNIVERSE[i]}`] = h.value.map((r) => r.apr);
+      const key = `Binance:${UNIVERSE[i]}`;
+      fundingSeries[key] = h.value.map((r) => ({ rate: r.rate, apr: r.apr }));
+      fundingHistory[key] = h.value
+        .slice(-config.fundingRegimeWindow)
+        .map((r) => r.apr);
     }
   });
+
+  // Shadow persistence probabilities, same as the trading pass computes.
+  const persistence: Record<string, number> = {};
+  const pooled = Object.values(fundingSeries).flatMap((s) => buildDataset(s));
+  if (pooled.length >= 200) {
+    const model = trainLogistic(pooled);
+    for (const [key, s] of Object.entries(fundingSeries)) {
+      const p = persistenceProbability(model, s);
+      if (p !== null) persistence[key] = p;
+    }
+  }
 
   // The tier gate needs to know whether NAV has *held* above a threshold, which
   // requires recorded history. With the database down we pass zero days held,
@@ -63,6 +87,7 @@ export async function GET() {
     fundingHistory,
     daysHeldAboveThreshold,
     halted: haltState.halted,
+    persistence,
   });
 
   return Response.json(

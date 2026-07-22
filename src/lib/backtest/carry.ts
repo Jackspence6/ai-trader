@@ -55,6 +55,12 @@ export type CarryBacktestParams = {
   expectedHoldDays: number;
   /** Minimum net edge (bps) over the expected hold, matching the live gate. */
   minNetEdgeBps: number;
+  /**
+   * Exit only when the trailing-window MEDIAN funding is negative too, not on
+   * a single negative print — the live exit manager's hysteresis. Off = the
+   * original single-print exit, kept so the two can be compared.
+   */
+  exitMedianConfirm?: boolean;
 };
 
 export type BacktestTrade = {
@@ -88,6 +94,15 @@ function positiveShare(series: FundingPoint[], i: number, window: number): numbe
     if (series[j].rate > 0) positive += 1;
   }
   return n > 0 ? positive / n : 0;
+}
+
+/** Median APR over the trailing `window` intervals ending at `i`, inclusive. */
+function trailingMedianApr(series: FundingPoint[], i: number, window: number): number {
+  const start = Math.max(0, i - window + 1);
+  const aprs = series.slice(start, i + 1).map((p) => p.apr).sort((a, b) => a - b);
+  if (aprs.length === 0) return 0;
+  const mid = Math.floor(aprs.length / 2);
+  return aprs.length % 2 === 0 ? (aprs[mid - 1] + aprs[mid]) / 2 : aprs[mid];
 }
 
 /**
@@ -140,8 +155,13 @@ export function backtestCarry(
       fundingAcc += p.rate;
       intervalsHeld += 1;
 
-      // Exit once funding is no longer positive — the thesis is gone.
-      if (p.apr < 0) {
+      // Exit once funding is no longer positive — the thesis is gone. With
+      // median confirmation, a lone negative print inside a still-positive
+      // regime is sat through instead of paying a fresh round trip.
+      const exitConfirmed =
+        !params.exitMedianConfirm ||
+        trailingMedianApr(series, i, params.regimeWindow) < 0;
+      if (p.apr < 0 && exitConfirmed) {
         trades.push({
           entryT,
           exitT: p.t,

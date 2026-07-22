@@ -354,8 +354,10 @@ describe("paper engine", () => {
 
   it("accounts for earlier fills in the SAME pass", async () => {
     // Evaluating every intent against the opening state would let one sleeve
-    // be filled several times over. The second entry must be smaller because
-    // the first consumed sleeve headroom.
+    // be filled several times over. Capital is measured as consumed (spot in
+    // full, perp at margin), so each carry costs cap × (1 + 1/3): on $1,200
+    // with a $420 position cap, two full-cap trades fit (2 × $560) and the
+    // THIRD must shrink to the remaining headroom.
     const r = await runPaperPass({
       ...base,
       venue: paperVenue(),
@@ -367,18 +369,24 @@ describe("paper engine", () => {
       opportunities: [
         opportunity({ id: "a", notionalUsd: 1_000 }),
         opportunity({ id: "b", notionalUsd: 1_000 }),
+        opportunity({ id: "c", notionalUsd: 1_000 }),
       ],
     });
 
-    const first = r.decisions[0].fills[0];
-    const second = r.decisions[1].fills[0];
-    expect(second.qty * second.price).toBeLessThan(first.qty * first.price);
+    const notional = (i: number) => {
+      const f = r.decisions[i].fills[0];
+      return f.qty * f.price;
+    };
+    expect(notional(1)).toBeCloseTo(notional(0), 6);
+    expect(notional(2)).toBeLessThan(notional(1));
 
-    // And the sleeve is never overdrawn in total.
-    const deployed = r.fills
-      .filter((f) => f.market === "spot")
-      .reduce((a, f) => a + f.qty * f.price, 0);
-    expect(deployed).toBeLessThanOrEqual(1_200);
+    // And the sleeve's CONSUMED capital never exceeds its allocation beyond
+    // execution slippage (fills land slightly off the sizing reference mid).
+    const consumed = r.fills.reduce(
+      (a, f) => a + (f.qty * f.price) / (f.market === "perp" ? 3 : 1),
+      0,
+    );
+    expect(consumed).toBeLessThanOrEqual(1_200 * 1.01);
   });
 
   it("records realised entry cost for the predicted-vs-realised diagnostic", async () => {

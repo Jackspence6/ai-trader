@@ -132,12 +132,17 @@ if (!dbUp) {
       expect(day.close).toBe(1100);
     });
 
+    // Streak assertions pin `asOf` inside the seeded 2001 window. The streak
+    // is anchored at the day before `asOf`, so real recorder data elsewhere in
+    // the table cannot reach these tests — and they cannot pass by accident on
+    // an empty database either.
+
     it("counts a clean streak of complete days above the threshold", async () => {
       for (let i = 0; i < 5; i++) {
         await recordNav(1000, "test", new Date(BASE + i * 86_400_000));
       }
-      // 2001 is entirely in the past, so all five days are complete.
-      expect(await daysHeldAbove(500)).toBeGreaterThanOrEqual(5);
+      // As of Jan 6, the five complete days Jan 1–5 all held.
+      expect(await daysHeldAbove(500, new Date(BASE + 5 * 86_400_000))).toBe(5);
     });
 
     it("uses the daily MINIMUM, so an intraday dip breaks the streak", async () => {
@@ -151,13 +156,30 @@ if (!dbUp) {
 
       // Streak counts backwards from the most recent complete day and stops at
       // the dip, so only the final day counts.
-      expect(await daysHeldAbove(500)).toBe(1);
+      expect(await daysHeldAbove(500, new Date(BASE + 3 * 86_400_000))).toBe(1);
+    });
+
+    it("breaks the streak on a day with no observations at all", async () => {
+      // No data is no evidence: seven qualifying days spread over a patchy
+      // month must not satisfy a 7-consecutive-day hold.
+      await query("DELETE FROM nav_history WHERE observed_at < '2002-01-01'");
+      await recordNav(1000, "test", new Date(BASE)); // Jan 1
+      // Jan 2 missing entirely.
+      await recordNav(1000, "test", new Date(BASE + 2 * 86_400_000)); // Jan 3
+      expect(await daysHeldAbove(500, new Date(BASE + 3 * 86_400_000))).toBe(1);
+    });
+
+    it("counts nothing when history stops before yesterday", async () => {
+      // Stale history is not evidence about now.
+      await query("DELETE FROM nav_history WHERE observed_at < '2002-01-01'");
+      await recordNav(1000, "test", new Date(BASE));
+      expect(await daysHeldAbove(500, new Date(BASE + 10 * 86_400_000))).toBe(0);
     });
 
     it("returns zero when nothing clears the threshold", async () => {
       await query("DELETE FROM nav_history WHERE observed_at < '2002-01-01'");
       await recordNav(100, "test", new Date(BASE));
-      expect(await daysHeldAbove(500)).toBe(0);
+      expect(await daysHeldAbove(500, new Date(BASE + 86_400_000))).toBe(0);
     });
 
     it("returns zero for a zero or negative threshold", async () => {

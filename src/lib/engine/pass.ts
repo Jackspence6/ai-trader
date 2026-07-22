@@ -13,19 +13,30 @@
  */
 
 import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
-import { fetchFxQuotes } from "@/lib/market/forex";
+import { FX_PAIRS, fetchFxHistory, fetchFxQuotes } from "@/lib/market/forex";
+import { evaluateFxTrend, trendStopFraction } from "@/lib/calc/fxsignal";
 import { fxBooks, fxPrices } from "@/lib/market/fxbook";
 import { UNIVERSE } from "@/lib/market/types";
 import { resolveTier, tierForNav } from "@/lib/calc/tiers";
 import { scan } from "@/lib/engine/scanner";
-import { scanForex } from "@/lib/engine/forexscan";
+import { scanForex, scanForexTrend } from "@/lib/engine/forexscan";
+import { scanStablePeg } from "@/lib/engine/pegscan";
+import { fetchStableQuotes, pegDiscount } from "@/lib/market/stables";
 import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
-import { daysHeldAbove } from "@/lib/db/nav";
+import { daysHeldAbove, recordNav } from "@/lib/db/nav";
 import { getFundState } from "@/lib/fund/nav";
 import { buildPositions, markPositions, sleevePnl, type Fill } from "@/lib/portfolio/positions";
 import { sleeveById } from "@/lib/portfolio/sleeves";
 import { accrueFxCarry } from "@/lib/oms/fxcarry";
+import { accruePerpFunding } from "@/lib/oms/perpfunding";
+import {
+  buildDataset,
+  persistenceProbability,
+  trainLogistic,
+  type FundingSample,
+} from "@/lib/ml/persistence";
+import { classifyFundingRegime } from "@/lib/calc/funding";
 import { evaluateExits } from "@/lib/oms/exits";
 import { evaluateRisk, type RiskState, type RiskBreach } from "./risk";
 import { writeConfig } from "./store";
@@ -45,7 +56,14 @@ import { appendLog, readJson, writeJson } from "@/lib/store/kv";
 /** Durable per-pass history. Read by the performance screen. */
 export const TRADE_LOG = "trade_passes";
 
-/** When FX carry was last accrued — the clock the accrual is measured against. */
+/**
+ * When carry income was last accrued — the clock the accrual is measured
+ * against. One clock for both books (FX carry and crypto perp funding): they
+ * accrue in the same place on the same elapsed interval, so separate clocks
+ * could only drift apart and double- or under-book one side. The key name
+ * predates crypto accrual and is kept so an existing deployment's clock
+ * carries over instead of resetting.
+ */
 const FX_CARRY_ACCRUAL_KEY = "fx_carry_last_accrual";
 /** Persistent risk state: high-water marks and the daily baseline. */
 export const RISK_STATE_KEY = "risk_state";
@@ -53,7 +71,8 @@ export const RISK_STATE_KEY = "risk_state";
 const MAX_ACCRUAL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Book the FX carry earned since the last pass.
+ * Book the carry earned since the last pass — FX interest differential AND
+ * crypto perp funding, over the same elapsed interval.
  *
  * Time-driven, so it runs exactly once per pass and advances its own clock. The
  * first ever pass sets the baseline and accrues nothing — there is no prior
@@ -61,6 +80,8 @@ const MAX_ACCRUAL_MS = 24 * 60 * 60 * 1000;
  */
 async function accrueCarry(
   fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
+  fundingApr: (venue: string, asset: string) => number | undefined,
+  prices: Map<string, number>,
 ): Promise<void> {
   const now = Date.now();
   const last = (await readJson<number>(FX_CARRY_ACCRUAL_KEY)) ?? 0;
@@ -77,8 +98,11 @@ async function accrueCarry(
   }
 
   const [fills, funding] = await Promise.all([readFills(), readFundingPayments()]);
-  const openFx = buildPositions(fills, funding).filter((p) => p.qty !== 0);
-  const payments = accrueFxCarry(openFx, fxQuotes, elapsedMs, now);
+  const open = buildPositions(fills, funding).filter((p) => p.qty !== 0);
+  const payments = [
+    ...accrueFxCarry(open, fxQuotes, elapsedMs, now),
+    ...accruePerpFunding(open, fundingApr, (a) => prices.get(a), elapsedMs, now),
+  ];
   if (payments.length > 0) await recordFunding(payments);
   await writeJson(FX_CARRY_ACCRUAL_KEY, now);
 }
@@ -96,22 +120,27 @@ async function processExits(
   fills: Fill[],
   funding: Awaited<ReturnType<typeof readFundingPayments>>,
   prices: Map<string, number>,
-  snapshot: Awaited<ReturnType<typeof fetchSnapshot>>,
+  fundingApr: (venue: string, asset: string) => number | undefined,
+  fundingMedianApr: (venue: string, asset: string) => number | undefined,
   fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
+  fxCloses: Record<string, number[]>,
+  stableDiscounts: Map<string, number>,
 ): Promise<{ fills: Fill[]; orders: Order[]; reasons: Record<string, number> }> {
   const marked = markPositions(buildPositions(fills, funding), prices);
 
-  const fundingMap = new Map<string, number>();
-  for (const q of snapshot.quotes) {
-    if (q.kind === "perp" && q.fundingApr !== undefined) {
-      fundingMap.set(`${q.venue}:${q.asset}`, q.fundingApr);
-    }
-  }
   const fxPairs = new Map(fxQuotes.map((q) => [q.symbol, { base: q.base, quote: q.quote }]));
 
   const plans = evaluateExits(marked, {
-    fundingApr: (v, a) => fundingMap.get(`${v}:${a}`),
+    fundingApr,
+    fundingMedianApr,
     fxPair: (s) => fxPairs.get(s),
+    stableDiscount: (a) => stableDiscounts.get(a),
+    fxTrend: (s) =>
+      fxCloses[s] ? evaluateFxTrend(s, fxCloses[s]).direction : undefined,
+    fxTrendStop: (s) => {
+      const vol = fxCloses[s] ? evaluateFxTrend(s, fxCloses[s]).annualisedVol : null;
+      return vol ? trendStopFraction(vol) : undefined;
+    },
   });
 
   const outFills: Fill[] = [];
@@ -199,12 +228,21 @@ export type PassOutcome = {
 };
 
 export async function runTradingPass(): Promise<PassOutcome> {
-  const [snapshot, fxQuotes, storedConfig, halt] = await Promise.all([
+  const [baseSnapshot, stableQuotes, fxQuotes, storedConfig, halt] = await Promise.all([
     fetchSnapshot(),
+    fetchStableQuotes().catch(() => []),
     fetchFxQuotes().catch(() => []),
     readConfig(),
     readHalt(),
   ]);
+
+  // Stable quotes ride inside the snapshot so prices, simulated books and
+  // exits see USDC like any other spot asset. They have no perp, so the
+  // carry/spread scanners simply never match them.
+  const snapshot = {
+    ...baseSnapshot,
+    quotes: [...baseSnapshot.quotes, ...stableQuotes],
+  };
 
   const prices = new Map<string, number>();
   for (const q of snapshot.quotes) {
@@ -259,23 +297,61 @@ export async function runTradingPass(): Promise<PassOutcome> {
     daysHeldAboveThreshold = 0;
   }
 
+  // Fetch a deep funding window: the regime filter and exits use the last
+  // `fundingRegimeWindow` intervals exactly as before, and the deeper history
+  // trains the persistence model. Same one call per asset either way.
   const histories = await Promise.allSettled(
-    UNIVERSE.map((a) => fetchBinanceFundingHistory(a, config.fundingRegimeWindow)),
+    UNIVERSE.map((a) =>
+      fetchBinanceFundingHistory(a, Math.max(400, config.fundingRegimeWindow)),
+    ),
   );
   const fundingHistory: Record<string, number[]> = {};
+  const fundingSeries: Record<string, FundingSample[]> = {};
   histories.forEach((h, i) => {
     if (h.status === "fulfilled") {
-      fundingHistory[`Binance:${UNIVERSE[i]}`] = h.value.map((r) => r.apr);
+      const key = `Binance:${UNIVERSE[i]}`;
+      fundingSeries[key] = h.value.map((r) => ({ rate: r.rate, apr: r.apr }));
+      fundingHistory[key] = h.value
+        .slice(-config.fundingRegimeWindow)
+        .map((r) => r.apr);
     }
   });
 
+  // Persistence model, retrained each pass on the fetched history (a few
+  // milliseconds; deterministic). SHADOW: the probabilities annotate scored
+  // opportunities and are recorded with them — nothing gates on them until
+  // the live track record earns it.
+  const persistence: Record<string, number> = {};
+  const pooledExamples = Object.values(fundingSeries).flatMap((s) => buildDataset(s));
+  if (pooledExamples.length >= 200) {
+    const model = trainLogistic(pooledExamples);
+    for (const [key, s] of Object.entries(fundingSeries)) {
+      const p = persistenceProbability(model, s);
+      if (p !== null) persistence[key] = p;
+    }
+  }
+
   const dataAgeSeconds = (Date.now() - snapshot.asOf) / 1000;
 
-  // Accrue FX carry on positions held since the last pass, BEFORE any new
-  // entries — a position starts earning carry the pass after it opens, never
-  // the instant it opens. This books the interest differential as funding, the
-  // same mechanism crypto uses.
-  await accrueCarry(fxQuotes);
+  // Live and historical funding, shared by accrual and exits.
+  const fundingMap = new Map<string, number>();
+  for (const q of snapshot.quotes) {
+    if (q.kind === "perp" && q.fundingApr !== undefined) {
+      fundingMap.set(`${q.venue}:${q.asset}`, q.fundingApr);
+    }
+  }
+  const fundingApr = (v: string, a: string) => fundingMap.get(`${v}:${a}`);
+  const fundingMedianApr = (v: string, a: string) => {
+    const history = fundingHistory[`${v}:${a}`];
+    if (!history || history.length === 0) return undefined;
+    return classifyFundingRegime(history)?.medianApr;
+  };
+
+  // Accrue carry on positions held since the last pass, BEFORE any new
+  // entries — a position starts earning the pass after it opens, never the
+  // instant it opens. Books the FX interest differential and crypto perp
+  // funding through the same FundingPayment mechanism.
+  await accrueCarry(fxQuotes, fundingApr, prices);
 
   const existingFills = await readFills();
   const fundingBefore = await readFundingPayments();
@@ -328,9 +404,28 @@ export async function runTradingPass(): Promise<PassOutcome> {
 
   const tier = resolveTier(fund.navUsd, daysHeldAboveThreshold, "T0").current;
 
+  // Daily closes per FX pair, for the trend signal and its exits. A pair whose
+  // history fetch fails simply produces no trend opportunity this pass.
+  const fxHistories = await Promise.allSettled(
+    FX_PAIRS.map(async (p) => {
+      const h = await fetchFxHistory(p.symbol, 120);
+      return [p.symbol, h.map((d) => d.rate)] as const;
+    }),
+  );
+  const fxCloses: Record<string, number[]> = {};
+  for (const h of fxHistories) {
+    if (h.status === "fulfilled") fxCloses[h.value[0]] = h.value[1];
+  }
+
   const opportunities = [
-    ...scan({ config, snapshot, fundingHistory, daysHeldAboveThreshold, halted: false }),
+    ...scan({
+      config, snapshot, fundingHistory, daysHeldAboveThreshold, halted: false, persistence,
+    }),
+    ...scanStablePeg({ config, quotes: stableQuotes, tier, dataAgeSeconds, halted: false }),
     ...scanForex({ config, quotes: fxQuotes, tier, dataAgeSeconds, halted: false }),
+    ...scanForexTrend({
+      config, quotes: fxQuotes, tier, dataAgeSeconds, halted: false, closes: fxCloses,
+    }),
   ];
 
   const venue = new SimulatedVenue();
@@ -340,7 +435,11 @@ export async function runTradingPass(): Promise<PassOutcome> {
   // inverted, FX carry decayed, or a stop breached — is closed before new
   // entries are considered, so the freed position slot and capital are
   // available to the same pass rather than a later one.
-  const exit = await processExits(venue, existingFills, fundingBefore, prices, snapshot, fxQuotes);
+  const stableDiscounts = new Map(stableQuotes.map((q) => [q.asset, pegDiscount(q.ask)]));
+  const exit = await processExits(
+    venue, existingFills, fundingBefore, prices, fundingApr, fundingMedianApr,
+    fxQuotes, fxCloses, stableDiscounts,
+  );
   if (exit.orders.length > 0) await recordOrders(exit.orders);
 
   const result = await runPaperPass({
@@ -363,6 +462,19 @@ export async function runTradingPass(): Promise<PassOutcome> {
   ]);
 
   const after = await getFundState(prices);
+
+  // Record NAV straight to the database, best-effort. The tier ladder's
+  // 7-day hold needs a NAV point on every calendar day; the recorder writes
+  // JSONL that only reaches the database when someone runs `pnpm db:import`
+  // by hand, which is exactly the kind of manual step that silently stops
+  // happening. The pass runs anyway — one small insert makes promotion
+  // evidence self-sustaining. Failure is swallowed: the database is optional
+  // by design and a pass must never fail because history could not be saved.
+  try {
+    await recordNav(after.navUsd, "pass");
+  } catch {
+    // Ladder simply sees no new evidence; conservative by construction.
+  }
 
   const record: TradePassRecord = {
     ts: Date.now(),

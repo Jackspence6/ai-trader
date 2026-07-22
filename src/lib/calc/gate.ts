@@ -13,6 +13,7 @@
  */
 
 import { BPS } from "./costs";
+import { riskUnitSize, volatilityTargetSize } from "./sizing";
 import type { Tier } from "./tiers";
 
 export type RejectionCode =
@@ -34,7 +35,8 @@ export type RejectionCode =
   | "sleeve_halted"
   | "sleeve_budget_exhausted"
   | "sleeve_position_cap"
-  | "sleeve_undercapitalised";
+  | "sleeve_undercapitalised"
+  | "trend_not_engaged";
 
 export const REJECTION_LABELS: Record<RejectionCode, string> = {
   net_edge_below_threshold: "Net edge below threshold",
@@ -56,6 +58,7 @@ export const REJECTION_LABELS: Record<RejectionCode, string> = {
   sleeve_budget_exhausted: "Sleeve capital fully deployed",
   sleeve_position_cap: "Exceeds sleeve position cap",
   sleeve_undercapitalised: "Sleeve below minimum viable capital",
+  trend_not_engaged: "No engaged trend to follow",
 };
 
 /**
@@ -372,7 +375,15 @@ export function evaluateGate(g: GateInput): GateDecision {
       };
     }
 
-    limits.push(sleeveHeadroom, s.maxPositionUsd);
+    // Headroom is CAPITAL; the other limits are NOTIONAL. A carry consumes
+    // notional × (1 + 1/L) of capital, so sizing notional straight to the
+    // headroom would overdraw the sleeve by the margin factor. Convert using
+    // this trade's own capital-per-notional ratio.
+    const capitalPerNotional =
+      g.intendedNotionalUsd > 0 && g.capitalRequiredUsd > 0
+        ? g.capitalRequiredUsd / g.intendedNotionalUsd
+        : 1;
+    limits.push(sleeveHeadroom / capitalPerNotional, s.maxPositionUsd);
   }
 
   const sized = Math.min(...limits);
@@ -391,4 +402,173 @@ export function evaluateGate(g: GateInput): GateDecision {
 /** Expected profit in USD for a sized opportunity at a given net edge. */
 export function expectedProfitUsd(notionalUsd: number, netEdgeBps: number): number {
   return (netEdgeBps / BPS) * notionalUsd;
+}
+
+/* ------------------------------------------------------------- trend gate */
+
+export type TrendGateInput = {
+  tier: Tier;
+  sleeve?: SleeveContext;
+  /** See GateInput.paperMode — exempts the tier's live-capital locks only. */
+  paperMode?: boolean;
+
+  /** Whether the trend signal has actually taken a side. */
+  engaged: boolean;
+  /** Pair's annualised volatility. Null means it cannot be sized honestly. */
+  annualisedVol: number | null;
+  /** Invalidation distance as a fraction of price. */
+  stopDistanceFraction: number;
+  /** Portfolio vol target (config.targetAnnualVol). */
+  targetAnnualVol: number;
+  /** Loss at the stop, as a fraction of sleeve capital. */
+  riskPerTradeFraction: number;
+
+  /** Logical positions open in this account, against the tier's budget. */
+  openPositions: number;
+  leverage: number;
+  maxLeverage: number;
+  venueMinNotionalUsd: number;
+  staleData: boolean;
+  globalHalt: boolean;
+};
+
+/**
+ * The gate for stop-managed directional trades (F2 trend, later H1).
+ *
+ * Deliberately NOT `evaluateGate`. That gate's centre is a measurable net edge
+ * in basis points, which a carry has and a trend bet does not — a trend's
+ * expectation lives in the distribution of many trades, not in any single
+ * entry. Forcing trend through an edge threshold would either reject it always
+ * (edge 0 < any floor) or require inventing an edge number, which is dishonest
+ * bookkeeping. What a trend trade CAN honestly promise is bounded loss:
+ * a real invalidation level and a size chosen so being wrong costs a fixed
+ * fraction of the sleeve. That is what this gate checks.
+ *
+ * Sizing takes the tightest of: volatility targeting (equalises risk across
+ * pairs), risk-unit sizing (fixes the loss at the stop), sleeve headroom
+ * (converted from capital to notional at the sleeve's leverage), and the
+ * sleeve's per-position cap.
+ */
+export function evaluateTrendGate(g: TrendGateInput): GateDecision {
+  if (g.globalHalt) {
+    return { allowed: false, code: "global_halt", detail: "Trading halted globally" };
+  }
+
+  if (g.staleData) {
+    return {
+      allowed: false,
+      code: "market_data_stale",
+      detail: "FX fix is stale (weekend/holiday) — not a tradeable rate",
+    };
+  }
+
+  if (!g.sleeve) {
+    return {
+      allowed: false,
+      code: "sleeve_disabled",
+      detail: "No sleeve configured for this strategy",
+    };
+  }
+  const s = g.sleeve;
+
+  if (!s.enabled) {
+    return { allowed: false, code: "sleeve_disabled", detail: `${s.name} sleeve is switched off` };
+  }
+  if (s.halted) {
+    return {
+      allowed: false,
+      code: "sleeve_halted",
+      detail: `${s.name} sleeve halted by a risk breach; other sleeves are unaffected`,
+    };
+  }
+  if (s.allocatedUsd < s.minimumViableUsd) {
+    return {
+      allowed: false,
+      code: "sleeve_undercapitalised",
+      detail: `${s.name} has $${s.allocatedUsd.toFixed(2)}, needs $${s.minimumViableUsd.toFixed(2)}`,
+    };
+  }
+  if (g.leverage > Math.min(s.maxLeverage, g.maxLeverage)) {
+    return {
+      allowed: false,
+      code: "leverage_cap",
+      detail: `Requested ${g.leverage}x exceeds the ${s.name} cap of ${Math.min(s.maxLeverage, g.maxLeverage)}x`,
+    };
+  }
+  if (s.openPositions >= s.maxConcurrentPositions) {
+    return {
+      allowed: false,
+      code: "sleeve_position_cap",
+      detail: `${s.openPositions}/${s.maxConcurrentPositions} positions open in ${s.name}`,
+    };
+  }
+
+  if (!g.engaged) {
+    return {
+      allowed: false,
+      code: "trend_not_engaged",
+      detail: "Averages entangled — ranging market, staying flat",
+    };
+  }
+  if (g.annualisedVol === null || g.annualisedVol <= 0) {
+    return {
+      allowed: false,
+      code: "trend_not_engaged",
+      detail: "No volatility history — cannot size the position honestly",
+    };
+  }
+  if (g.stopDistanceFraction <= 0) {
+    return {
+      allowed: false,
+      code: "trend_not_engaged",
+      detail: "No invalidation distance — a trend trade without a stop is not takeable",
+    };
+  }
+
+  if (g.openPositions >= g.tier.maxConcurrentPositions) {
+    return {
+      allowed: false,
+      code: "position_limit_reached",
+      detail: `${g.openPositions}/${g.tier.maxConcurrentPositions} positions open at tier ${g.tier.id}`,
+    };
+  }
+
+  // The tier's risk budget is a live-capital allocation; medium-risk trend is
+  // budget-gated live exactly like the edge gate does it.
+  if (!g.paperMode && g.tier.riskBudget.medium <= 0) {
+    return {
+      allowed: false,
+      code: "risk_budget_exhausted",
+      detail: `Tier ${g.tier.id} allocates 0% to medium risk`,
+    };
+  }
+
+  const headroomUsd = s.allocatedUsd - s.deployedUsd;
+  if (headroomUsd <= 0) {
+    return {
+      allowed: false,
+      code: "sleeve_budget_exhausted",
+      detail: `${s.name} has $${s.allocatedUsd.toFixed(2)} allocated, all of it deployed`,
+    };
+  }
+
+  const maxFraction = s.allocatedUsd > 0 ? s.maxPositionUsd / s.allocatedUsd : 0;
+  const lev = Math.max(g.leverage, 1);
+  const sized = Math.min(
+    volatilityTargetSize(s.allocatedUsd, g.targetAnnualVol, g.annualisedVol, maxFraction),
+    riskUnitSize(s.allocatedUsd, g.riskPerTradeFraction, g.stopDistanceFraction, maxFraction),
+    // FX is margined, so headroom capital funds leverage × as much notional.
+    headroomUsd * lev,
+    s.maxPositionUsd,
+  );
+
+  if (sized < g.venueMinNotionalUsd) {
+    return {
+      allowed: false,
+      code: "below_min_notional",
+      detail: `Sized $${sized.toFixed(2)} below venue minimum $${g.venueMinNotionalUsd.toFixed(2)}`,
+    };
+  }
+
+  return { allowed: true, sizedNotionalUsd: sized };
 }

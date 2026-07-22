@@ -11,7 +11,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { NavChart } from "@/components/charts";
+import { useLive } from "@/lib/live";
 import { cx, Micro, Panel, Stat, Tag } from "@/components/ui";
+
+type MlResponse = {
+  points: number;
+  assets: number;
+  walkForward: {
+    samples: number;
+    testedSamples: number;
+    baseRate: number;
+    accuracy: number;
+    baselineAccuracy: number;
+    precisionAt70: number;
+    coverageAt70: number;
+    baselinePrecision: number;
+    baselineCoverage: number;
+    brier: number;
+    beatsBaseline: boolean;
+  };
+  current: { asset: string; probability: number | null; medianRuleSaysHold: boolean }[];
+  weights: { name: string; weight: number }[];
+  caveats: string[];
+  error?: string;
+};
 
 type Stats = {
   totalReturnPct: number;
@@ -30,6 +53,7 @@ type BacktestResult = {
   costFraction: number;
   portfolio: { equity: { t: number; cumReturn: number }[]; stats: Stats };
   byAsset: { asset: string; stats: Stats; points: number }[];
+  scenarios?: { key: string; label: string; costFraction: number; stats: Stats }[];
   caveats: string[];
 };
 
@@ -174,6 +198,80 @@ export default function ResearchPage() {
         ) : null}
       </Panel>
 
+      {data?.scenarios && data.scenarios.length > 0 && (
+        <Panel
+          label="EXECUTION LEVERS"
+          hint="SAME HISTORY · ENTRY LIQUIDITY × EXIT RULE"
+          flush
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="micro px-3 py-2 text-left font-normal text-dim">SCENARIO</th>
+                  <th className="micro px-3 py-2 text-right font-normal text-dim">COST</th>
+                  <th className="micro px-3 py-2 text-right font-normal text-dim">RETURN</th>
+                  <th className="micro px-3 py-2 text-right font-normal text-dim">ANNUALISED</th>
+                  <th className="micro px-3 py-2 text-right font-normal text-dim">TRADES</th>
+                  <th className="micro px-3 py-2 text-right font-normal text-dim">WIN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.scenarios.map((sc) => (
+                  <tr
+                    key={sc.key}
+                    className={cx(
+                      "border-b border-line/60",
+                      sc.key === "taker-regime" && "bg-raised/30",
+                    )}
+                  >
+                    <td className="px-3 py-2 text-ink">
+                      {sc.label}
+                      {sc.key === "taker-regime" && (
+                        <span className="micro ml-2 text-accent">CURRENT</span>
+                      )}
+                    </td>
+                    <td className="tnum px-3 py-2 text-right text-muted">
+                      {(sc.costFraction * 100).toFixed(3)}%
+                    </td>
+                    <td
+                      className={cx(
+                        "tnum px-3 py-2 text-right",
+                        sc.stats.totalReturnPct >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {sc.stats.totalReturnPct >= 0 ? "+" : ""}
+                      {(sc.stats.totalReturnPct * 100).toFixed(2)}%
+                    </td>
+                    <td
+                      className={cx(
+                        "tnum px-3 py-2 text-right",
+                        sc.stats.annualisedReturnPct >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {sc.stats.annualisedReturnPct >= 0 ? "+" : ""}
+                      {(sc.stats.annualisedReturnPct * 100).toFixed(1)}%
+                    </td>
+                    <td className="tnum px-3 py-2 text-right text-muted">{sc.stats.trades}</td>
+                    <td className="tnum px-3 py-2 text-right text-muted">
+                      {sc.stats.trades > 0 ? `${(sc.stats.winRate * 100).toFixed(0)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-3 py-2.5 text-[11px] leading-relaxed text-dim">
+              The two levers actually available without new capital: resting
+              post-only entries instead of crossing the spread, and exiting on a
+              broken regime instead of a single negative print. Maker rows assume
+              every entry fills at the touch — the optimistic bound.
+            </p>
+          </div>
+        </Panel>
+      )}
+
+      <MlPanel />
+
       {data && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]">
           <Panel label="BY ASSET" hint="EACH MAJOR, SAME RULES" flush>
@@ -228,5 +326,137 @@ export default function ResearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function MlPanel() {
+  // Trains and validates on demand server-side; slow-polled because history
+  // moves one funding interval every 8 hours.
+  const { data, status } = useLive<MlResponse>("/api/ml", 300_000);
+  const wf = data?.walkForward;
+
+  return (
+    <Panel
+      label="FUNDING PERSISTENCE MODEL"
+      hint="FIRST ML · WALK-FORWARD ON REAL HISTORY · SHADOW"
+    >
+      {!data && (
+        <div className="text-[12px] text-dim">
+          {status === "error"
+            ? "Model validation unavailable"
+            : "Training and validating on real funding history…"}
+        </div>
+      )}
+      {data?.error && <div className="text-[12px] text-down">{data.error}</div>}
+      {wf && data && (
+        <>
+          <div
+            className={cx(
+              "mb-4 flex flex-wrap items-center gap-2 border px-3 py-2.5",
+              wf.beatsBaseline ? "border-up/30 bg-up/5" : "border-warn/30 bg-warn/5",
+            )}
+          >
+            <Tag tone={wf.beatsBaseline ? "up" : "warn"}>
+              {wf.beatsBaseline ? "BEATS BASELINE" : "NOT BETTER THAN BASELINE"}
+            </Tag>
+            <span className="text-[12px] text-muted">
+              Out of sample over {wf.testedSamples.toLocaleString("en-US")} unseen
+              windows: when the model is ≥70% confident funding persists, it is
+              right{" "}
+              <span className="tnum text-ink">{(wf.precisionAt70 * 100).toFixed(1)}%</span>{" "}
+              of the time, vs{" "}
+              <span className="tnum">{(wf.baselinePrecision * 100).toFixed(1)}%</span>{" "}
+              for the naive median rule the exits use today.
+              {!wf.beatsBaseline && " The baseline stays in charge until this flips."}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
+            <Stat label="SAMPLES" sub={<span className="text-dim">{data.assets} assets pooled</span>}>
+              <span className="tnum text-[17px] text-ink">
+                {wf.samples.toLocaleString("en-US")}
+              </span>
+            </Stat>
+            <Stat label="ACCURACY" sub={<span className="text-dim">baseline {(wf.baselineAccuracy * 100).toFixed(1)}%</span>}>
+              <span className={cx("tnum text-[17px]", wf.accuracy >= wf.baselineAccuracy ? "text-up" : "text-warn")}>
+                {(wf.accuracy * 100).toFixed(1)}%
+              </span>
+            </Stat>
+            <Stat label="PRECISION ≥70%" sub={<span className="text-dim">baseline {(wf.baselinePrecision * 100).toFixed(1)}%</span>}>
+              <span className={cx("tnum text-[17px]", wf.precisionAt70 >= wf.baselinePrecision ? "text-up" : "text-warn")}>
+                {(wf.precisionAt70 * 100).toFixed(1)}%
+              </span>
+            </Stat>
+            <Stat label="COVERAGE ≥70%" sub={<span className="text-dim">how often it commits</span>}>
+              <span className="tnum text-[17px] text-muted">
+                {(wf.coverageAt70 * 100).toFixed(0)}%
+              </span>
+            </Stat>
+            <Stat label="BRIER" sub={<span className="text-dim">calibration, lower better</span>}>
+              <span className="tnum text-[17px] text-muted">{wf.brier.toFixed(3)}</span>
+            </Stat>
+            <Stat label="BASE RATE" sub={<span className="text-dim">funding persisted</span>}>
+              <span className="tnum text-[17px] text-dim">{(wf.baseRate * 100).toFixed(0)}%</span>
+            </Stat>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 border-t border-line pt-4 lg:grid-cols-[1.2fr_1fr]">
+            <div>
+              <Micro className="mb-2">CURRENT REGIME · P(FUNDING PERSISTS 7D)</Micro>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                {data.current.map((c) => (
+                  <div key={c.asset} className="flex items-baseline justify-between gap-2">
+                    <span className="text-[12px] text-muted">{c.asset}</span>
+                    <span
+                      className={cx(
+                        "tnum text-[13px]",
+                        c.probability === null
+                          ? "text-dim"
+                          : c.probability >= 0.7
+                            ? "text-up"
+                            : c.probability >= 0.5
+                              ? "text-warn"
+                              : "text-down",
+                      )}
+                    >
+                      {c.probability === null ? "—" : `${(c.probability * 100).toFixed(0)}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Micro className="mb-2">WHAT THE MODEL LEARNED</Micro>
+              <div className="space-y-1.5">
+                {data.weights.map((w) => (
+                  <div key={w.name} className="flex items-center gap-2">
+                    <span className="w-24 shrink-0 text-[11px] text-muted">{w.name}</span>
+                    <div className="relative h-[3px] flex-1 bg-raised">
+                      <div
+                        className={cx("absolute h-full", w.weight >= 0 ? "bg-up" : "bg-down")}
+                        style={{
+                          width: `${Math.min(Math.abs(w.weight) * 60, 100)}%`,
+                          left: w.weight >= 0 ? "50%" : undefined,
+                          right: w.weight < 0 ? "50%" : undefined,
+                        }}
+                      />
+                      <div className="absolute left-1/2 top-[-2px] h-[7px] w-px bg-line-bright" />
+                    </div>
+                    <span className="tnum w-12 shrink-0 text-right text-[11px] text-dim">
+                      {w.weight >= 0 ? "+" : ""}
+                      {w.weight.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            {data.caveats.join(" ")}
+          </p>
+        </>
+      )}
+    </Panel>
   );
 }

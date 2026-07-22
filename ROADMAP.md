@@ -107,6 +107,41 @@ managed book whose P&L reflects a real strategy.
 
 **F2 trend is still scored, not executed.** The risk gate scores a trade by measurable net edge, which a carry has and a stop-managed trend bet does not — forcing trend through an edge gate would be dishonest bookkeeping. It needs a gate built for how trend-following actually works (invalidation and volatility stops), which is the next piece.
 
+### Carry income actually books — and the book actually fills (2026-07-22)
+
+A full review of the money path found and fixed the reasons paper P&L was
+structurally flat:
+
+- **Crypto perp funding never accrued.** FX carry booked its differential;
+  a crypto carry's `fundingUsd` stayed zero forever — the core strategy's
+  entire income stream was missing from P&L. `oms/perpfunding.ts` now accrues
+  perp funding each pass through the same `FundingPayment` mechanism, signed
+  correctly in both directions (`accrueCarry` in `engine/pass.ts` books both
+  asset classes on one clock).
+- **The paper book was starved by the promotion hold.** Paper gated on the
+  hold-gated effective tier (T0 → one position per account), so one carry
+  blocked every other candidate — including L2 spreads at 30–50bp net —
+  for the week the hold needs to mature. Paper now gates at the tier NAV
+  implies; live capital still resolves through the hold.
+- **Exits churned on single funding prints.** The backtest's core finding was
+  that single-print exits produced ~2-day holds that never amortised entry
+  costs. A funding-carry exit now requires the regime median to be negative
+  too, where history exists (`fundingMedianApr` in `oms/exits.ts`).
+- **Tier promotion was gameable by stale history.** `daysHeldAbove` counted
+  its streak from the last recorded day (not yesterday) and skipped calendar
+  gaps — sparse or stale NAV history could satisfy the 7-day hold. Now
+  anchored at yesterday, calendar-consecutive, with regression tests.
+- **The FX sleeves were absent from stored config**, so every F1 opportunity
+  died on `sleeve_disabled`. fx-carry is allocated and enabled; F1 executes.
+- **The live loop and recorder were running stale morning code** (pre-exits,
+  pre-OKX: 40 quotes/scan instead of 56). Restarted on current code.
+  Operational lesson: the loop must be restarted after deploying engine
+  changes — it loads code once at start.
+
+Verified live: an L2 AVAX spread and two F1 carries executed in consecutive
+passes, funding accrues on every open position each pass, and predicted vs
+realised entry cost error is 0.0bp on both strategies.
+
 ---
 
 ## 2. Still to do
@@ -224,7 +259,59 @@ Everything else — scanning, sizing, entering, exiting, halting, rebalancing, r
 
 ## 5. What I would do next
 
-In order, and the first item is not optional:
+**All five same-day items from the 2026-07-22 review are now DONE, same day:**
+
+1. ~~**Margin-aware sleeve deployment.**~~ **Done.** `capitalConsumedUsd`
+   measures spot in full and perp/FX legs at margin — the same basis the entry
+   gate prices — and the gate converts sleeve headroom from capital to
+   notional. Core went from "exhausted at 2 trades" to honestly holding 3.
+2. ~~**F2 trend execution gate.**~~ **Done.** `evaluateTrendGate`: engaged
+   signal, honest volatility, a real invalidation distance, size fixed so the
+   loss at the stop is 1% of the sleeve. Exits on signal flip or the vol stop;
+   a FLAT signal is a range, not a reversal, and does not churn the book.
+   Verified live: EURUSD and GBPUSD trend positions entered same pass.
+3. ~~**L3 stablecoin peg scanner.**~~ **Done.** USDC/FDUSD priced off Binance
+   book tickers as first-class quotes; discount side only (no borrow, no
+   fantasy shorts); exits on `peg_restored`. In calm markets its output is
+   honest silence.
+4. ~~**Maker-entry + exit-rule scenarios.**~~ **Done, with a finding.** The
+   backtest now prices the execution-lever grid on real history. Over 90 days:
+   taker + single-print exit **−2.61%** (65 trades, 0% wins); taker +
+   regime-confirmed exit **+0.04%** (4 trades); maker + regime **+0.21%**.
+   The exit hysteresis shipped this morning was worth ~2.7% on notional —
+   churn was the whole loss.
+5. ~~**Loop supervision.**~~ **Done.** `/api/engine` derives loop health from
+   the pass log (staleness vs its own cadence, zero-scored streaks, skip
+   reasons); System page leads with LOOP RUNNING / LATE / STOPPED / BLIND.
+
+### First machine learning: the funding-persistence model (2026-07-22, later)
+
+`lib/ml/persistence.ts` — a deliberately small, deterministic, dependency-free
+logistic model answering the question the backtest proved decides carry P&L:
+*will this funding regime persist over the next week?* Five regime features,
+economic label (would the next week of funding have summed positive),
+walk-forward validated on ~3,600 pooled samples of real Binance history.
+
+**First result: it beats the baseline out-of-sample.** Precision when ≥70%
+confident: **89.9%** vs **87.4%** for the median rule the exits use; accuracy
+75.8% vs 75.2%; sensible learned weights (persistence share and median level
+positive, regime volatility negative). Validated live on the Research screen
+("Funding Persistence Model" panel), and every Binance carry opportunity now
+carries its probability in SHADOW — recorded, displayed on Opportunities
+(PERSIST column), gating nothing. Promotion bar: keep beating the baseline as
+live evidence accrues, then let it confirm entries the way the median rule
+confirms exits. DESIGN.md principle 7 holds: the model never places orders.
+
+**Next up:**
+
+1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the
+   paper book and the first live micro-position.
+2. **Maker execution for real** — post-only entry tactic in the OMS with
+   fill-or-adjust handling, so the backtest's maker scenario becomes the live
+   default where fills allow.
+3. **Telegram alerting (E1)** wired to the new loop-health states.
+
+The original sequencing rationale below still stands:
 
 1. ~~**A8 — the market-data recorder.**~~ **Done and running.** Recording quotes, funding and scan decisions.
 2. ~~**A1 — Postgres/Timescale.**~~ **Done.** Schema, migrations and an idempotent importer; the tier ladder now reads real NAV history.

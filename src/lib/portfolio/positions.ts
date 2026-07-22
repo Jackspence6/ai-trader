@@ -319,6 +319,41 @@ export function countLogicalPositions(
 }
 
 /**
+ * Capital a set of open legs actually consumes, in USD.
+ *
+ * Gross market value is the wrong measure for a hedged book: it charges a
+ * $2k funding carry $4k of sleeve capital (both legs at full value) when the
+ * cash truly committed is the spot leg plus perp margin — the same
+ * `notional × (1 + 1/L)` the entry gate prices with `capitalRequiredUsd`.
+ * Measuring deployment more harshly than entry means a sleeve reads as
+ * exhausted while its own gate would happily fund another trade, and the
+ * difference compounds with every hedged position.
+ *
+ * Per leg:
+ *   - crypto spot — fully funded, full |value|
+ *   - perp        — margin only, |value| / leverage
+ *   - FX spot     — margined (CFD-style), |value| / leverage
+ *
+ * A leg with no mark falls back to entry notional — stale capital measured at
+ * entry beats stale capital measured at zero.
+ */
+export function capitalConsumedUsd(
+  positions: MarkedPosition[],
+  /** Effective leverage for a sleeve's positions (engine cap ∧ sleeve cap). */
+  leverageFor: (sleeveId: string) => number,
+  fxVenue = "fx",
+): number {
+  let total = 0;
+  for (const p of positions) {
+    if (p.qty === 0) continue;
+    const value = Math.abs(p.marketValueUsd ?? p.notionalUsd);
+    const margined = p.market === "perp" || p.venue === fxVenue;
+    total += margined ? value / Math.max(leverageFor(p.sleeveId), 1) : value;
+  }
+  return total;
+}
+
+/**
  * Net delta per underlying asset, across venues and markets.
  *
  * The number that proves a "delta-neutral" strategy actually is. A carry

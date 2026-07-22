@@ -188,6 +188,20 @@ export function evaluateFxTrend(
   };
 }
 
+/**
+ * Volatility stop for a trend position, as a fraction of price.
+ *
+ * Two weekly standard deviations, derived from the pair's own annualised vol:
+ * wide enough that ordinary noise does not shake the position out, tight
+ * enough that a broken trend is cut before it becomes a drawdown. Clamped —
+ * a suspiciously quiet pair still gets a real stop, and a wild one cannot
+ * demand a stop so wide the position never dies.
+ */
+export function trendStopFraction(annualisedVol: number): number {
+  const weeklySigma = annualisedVol * Math.sqrt(5 / 252);
+  return Math.min(Math.max(2 * weeklySigma, 0.005), 0.06);
+}
+
 export type FxPairSignal = {
   symbol: string;
   rate: number;

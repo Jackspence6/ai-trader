@@ -51,26 +51,51 @@ export async function navByDay(limitDays = 90): Promise<NavPoint[]> {
     .reverse();
 }
 
+/** The "YYYY-MM-DD" UTC day before `day`. */
+function dayBefore(day: string): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /**
- * Consecutive complete days NAV has stayed at or above `threshold`.
+ * Consecutive complete days NAV has stayed at or above `threshold`,
+ * counting backwards from the day before `asOf`.
  *
- * Counts backwards from yesterday. Returns 0 when there is no history, which
- * keeps the ladder at its current tier — the conservative default, and the
- * correct one when we simply do not know.
+ * Two properties matter for correctness, and both are about absence of data:
+ *
+ * - **The streak is anchored at yesterday.** History that stops three weeks
+ *   ago is not evidence NAV is above the threshold *now*, so a gap between
+ *   the last recorded day and yesterday means zero. The previous version
+ *   counted from the last recorded day wherever it fell, which let stale
+ *   history satisfy a promotion hold.
+ * - **Days must be calendar-consecutive.** A day with no observations is a
+ *   day we cannot claim NAV held above anything, so it breaks the streak
+ *   rather than being skipped. Seven qualifying days spread over three weeks
+ *   of patchy recording is not "held for 7 consecutive days".
+ *
+ * Returns 0 when there is no history — the conservative default, and the
+ * correct one when we simply do not know. `asOf` exists so tests can pin the
+ * anchor inside their seeded window instead of depending on the wall clock.
  */
-export async function daysHeldAbove(threshold: number): Promise<number> {
+export async function daysHeldAbove(
+  threshold: number,
+  asOf: Date = new Date(),
+): Promise<number> {
   if (threshold <= 0) return 0;
 
   const days = await navByDay(400);
   if (days.length === 0) return 0;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = asOf.toISOString().slice(0, 10);
   const complete = days.filter((d) => d.day < today);
 
   let streak = 0;
+  let expected = dayBefore(today);
   for (let i = complete.length - 1; i >= 0; i--) {
-    if (complete[i].min >= threshold) streak++;
-    else break;
+    if (complete[i].day !== expected || complete[i].min < threshold) break;
+    streak++;
+    expected = dayBefore(expected);
   }
   return streak;
 }

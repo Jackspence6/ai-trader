@@ -220,6 +220,7 @@ function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
             <Th>ASSET</Th>
             <Th>ROUTE</Th>
             <Th right>FUNDING APR</Th>
+            <Th right>PERSIST</Th>
             <Th right>GROSS</Th>
             <Th right>FEES</Th>
             <Th right>SPREAD</Th>
@@ -254,6 +255,25 @@ function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
                 ) : (
                   <span className={cx("tnum", o.fundingApr >= 0 ? "text-up" : "text-down")}>
                     {(o.fundingApr * 100).toFixed(2)}%
+                  </span>
+                )}
+              </Td>
+              <Td right>
+                {o.persistenceProb === undefined ? (
+                  <Dash />
+                ) : (
+                  <span
+                    className={cx(
+                      "tnum",
+                      o.persistenceProb >= 0.7
+                        ? "text-up"
+                        : o.persistenceProb >= 0.5
+                          ? "text-warn"
+                          : "text-down",
+                    )}
+                    title="Model probability this funding regime persists 7 days — shadow, not gating"
+                  >
+                    {(o.persistenceProb * 100).toFixed(0)}%
                   </span>
                 )}
               </Td>
