@@ -56,6 +56,19 @@ A conversion is never "unavailable". Live ECB fix when the provider answers, the
 
 The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation.
 
+### Risk-limit enforcement — the limits are real (`src/lib/engine/risk.ts`)
+
+The drawdown and daily-loss limits were displayed but never acted on —
+`dailyLossLimitHit` was hard-coded false and no sleeve was ever halted. Now
+every pass measures the live book against its limits: a fund breach (drawdown
+from high-water, or loss on the day) trips the global halt; a sleeve past its
+own drawdown limit is halted on its own, leaving the rest trading — the
+blast-radius isolation the design promised. High-water marks are seeded from the
+current value so a fresh book can't false-trip, and halts are one-way (recovering
+does not un-halt; resuming is a deliberate operator action). Utilisation against
+every limit is shown live on the Risk screen. Verified live: a healthy carry
+book sits at 0% drawdown and does not trip.
+
 ### Position exits — the trading loop closes (`src/lib/oms/exits.ts`)
 
 The scanner opened trades; now they close. Each pass, before new entries, every

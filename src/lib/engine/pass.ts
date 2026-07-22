@@ -23,9 +23,13 @@ import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
 import { daysHeldAbove } from "@/lib/db/nav";
 import { getFundState } from "@/lib/fund/nav";
-import { buildPositions, markPositions, type Fill } from "@/lib/portfolio/positions";
+import { buildPositions, markPositions, sleevePnl, type Fill } from "@/lib/portfolio/positions";
+import { sleeveById } from "@/lib/portfolio/sleeves";
 import { accrueFxCarry } from "@/lib/oms/fxcarry";
 import { evaluateExits } from "@/lib/oms/exits";
+import { evaluateRisk, type RiskState, type RiskBreach } from "./risk";
+import { writeConfig } from "./store";
+import { halt as haltTrading } from "@/lib/killswitch/state";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
 import { newIntentId, type Order } from "@/lib/oms/types";
 import { edgeAccuracy, runPaperPass } from "@/lib/oms/paper";
@@ -43,6 +47,8 @@ export const TRADE_LOG = "trade_passes";
 
 /** When FX carry was last accrued — the clock the accrual is measured against. */
 const FX_CARRY_ACCRUAL_KEY = "fx_carry_last_accrual";
+/** Persistent risk state: high-water marks and the daily baseline. */
+export const RISK_STATE_KEY = "risk_state";
 /** Clamp a long gap (deploy downtime) so a resumed pass cannot book a windfall. */
 const MAX_ACCRUAL_MS = 24 * 60 * 60 * 1000;
 
@@ -168,6 +174,8 @@ export type TradePassRecord = {
   /** Trades closed this pass by the exit manager, and why. */
   closed: number;
   exits: Record<string, number>;
+  /** Risk-limit breaches observed this pass (fund and per-sleeve). */
+  riskBreaches: RiskBreach[];
   openPositions: number;
   accuracy: ReturnType<typeof edgeAccuracy>;
   rejections: Record<string, number>;
@@ -218,6 +226,7 @@ export async function runTradingPass(): Promise<PassOutcome> {
       rejected: 0,
       closed: 0,
       exits: {},
+      riskBreaches: [],
       openPositions: fund.openPositions,
       accuracy: [],
       rejections: {},
@@ -271,6 +280,52 @@ export async function runTradingPass(): Promise<PassOutcome> {
   const existingFills = await readFills();
   const fundingBefore = await readFundingPayments();
 
+  // --- risk enforcement: measure the book against its limits before trading ---
+  // A sleeve past its drawdown limit is halted (that sleeve only); the fund past
+  // its drawdown or daily-loss limit trips the global halt and this pass stops.
+  const preMarked = markPositions(buildPositions(existingFills, fundingBefore), prices);
+  const sleevePnls = sleevePnl(preMarked);
+  const riskPrev = await readJson<RiskState>(RISK_STATE_KEY);
+  const risk = evaluateRisk({
+    navUsd: fund.navUsd,
+    dayKey: new Date().toISOString().slice(0, 10),
+    fund: { dailyLossPct: config.dailyLossLimitPct, maxDrawdownPct: config.maxDrawdownPct },
+    sleeves: config.sleeves
+      .filter((s) => s.enabled && s.allocatedUsd > 0)
+      .map((s) => {
+        const def = sleeveById(s.sleeveId);
+        const pnl = sleevePnls.find((p) => p.sleeveId === s.sleeveId);
+        return {
+          id: s.sleeveId,
+          name: def?.name ?? s.sleeveId,
+          equityUsd: s.allocatedUsd + (pnl?.totalUsd ?? 0),
+          maxDrawdownPct: def?.limits.maxDrawdownPct ?? 1,
+          alreadyHalted: s.halted,
+        };
+      }),
+    prev: riskPrev,
+  });
+  await writeJson(RISK_STATE_KEY, risk.state);
+
+  // Sleeve breach → halt that sleeve only. Persist it and apply to this pass so
+  // its entries are blocked immediately.
+  if (risk.sleeveHalts.length > 0) {
+    const halting = new Set(risk.sleeveHalts.map((h) => h.id));
+    config.sleeves = config.sleeves.map((s) =>
+      halting.has(s.sleeveId) ? { ...s, halted: true } : s,
+    );
+    await writeConfig(config);
+  }
+
+  // Fund breach → global halt. Trip it and stop; the next pass sees it halted.
+  if (risk.fundBreach) {
+    await haltTrading(risk.fundBreach.detail, "auto");
+    const out = skeleton(`risk halt — ${risk.fundBreach.detail}`);
+    out.record.riskBreaches = risk.breaches;
+    await appendLog(TRADE_LOG, [out.record]);
+    return out;
+  }
+
   const tier = resolveTier(fund.navUsd, daysHeldAboveThreshold, "T0").current;
 
   const opportunities = [
@@ -319,6 +374,7 @@ export async function runTradingPass(): Promise<PassOutcome> {
     rejected: result.rejected,
     closed: Object.values(exit.reasons).reduce((a, n) => a + n, 0),
     exits: exit.reasons,
+    riskBreaches: risk.breaches,
     openPositions: after.openPositions,
     accuracy: edgeAccuracy(result.decisions),
     rejections: result.decisions

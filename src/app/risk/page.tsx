@@ -15,13 +15,34 @@ import { Money } from "@/lib/currency";
 import type { HaltEvent, HaltState, SweepResult } from "@/lib/killswitch";
 import type { EngineConfig } from "@/lib/engine/config";
 import { computePortfolio } from "@/lib/portfolio/sleeves";
-import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { cx, Meter, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 type HaltResponse = { state: HaltState; audit: HaltEvent[] };
+
+type RiskResponse = {
+  halted: boolean;
+  fund: {
+    navUsd: number;
+    hwmUsd: number;
+    drawdownPct: number;
+    drawdownLimitPct: number;
+    dayLossPct: number;
+    dayLossLimitPct: number;
+  };
+  sleeves: {
+    id: string;
+    name: string;
+    assetClass: "crypto" | "forex";
+    drawdownPct: number;
+    limitPct: number;
+    halted: boolean;
+  }[];
+};
 
 export default function RiskPage() {
   const halt = useLive<HaltResponse>("/api/halt", 10_000);
   const cfg = useLive<{ config: EngineConfig }>("/api/config", 30_000);
+  const risk = useLive<RiskResponse>("/api/risk", 15_000);
 
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -200,6 +221,63 @@ export default function RiskPage() {
         </p>
       </Panel>
 
+      {/* -------------------------------------------------- live utilisation */}
+      <Panel
+        label="LIMIT UTILISATION"
+        hint="LIVE · AUTO-HALTS ON BREACH"
+        right={
+          risk.data ? (
+            <Tag tone={risk.data.halted ? "down" : "up"}>
+              {risk.data.halted ? "HALTED" : "WITHIN LIMITS"}
+            </Tag>
+          ) : undefined
+        }
+      >
+        {risk.data ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+              <Meter
+                label="Fund drawdown from high-water"
+                used={risk.data.fund.drawdownPct * 100}
+                limit={risk.data.fund.drawdownLimitPct * 100}
+                unit="%"
+              />
+              <Meter
+                label="Fund loss on the day"
+                used={risk.data.fund.dayLossPct * 100}
+                limit={risk.data.fund.dayLossLimitPct * 100}
+                unit="%"
+              />
+            </div>
+            {risk.data.sleeves.length > 0 && (
+              <div className="border-t border-line pt-3">
+                <Micro className="mb-2.5">SLEEVE DRAWDOWN vs OWN LIMIT</Micro>
+                <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                  {risk.data.sleeves.map((s) => (
+                    <Meter
+                      key={s.id}
+                      label={`${s.name}${s.halted ? " · HALTED" : ""}`}
+                      used={s.drawdownPct * 100}
+                      limit={s.limitPct * 100}
+                      unit="%"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-dim">Measuring the book against its limits…</p>
+        )}
+        <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+          Measured every pass against the stored high-water mark and daily
+          baseline. A fund breach trips the global halt; a sleeve past its own
+          drawdown limit is halted on its own, leaving the others trading. Halts
+          are one-way — recovering does not un-halt; resuming is a deliberate
+          action above.
+        </p>
+      </Panel>
+
       {/* ------------------------------------------------------------ limits */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_1fr]">
         <Panel label="ACTIVE LIMITS" hint="FROM THE CURRENT CONFIGURATION">
@@ -232,10 +310,10 @@ export default function RiskPage() {
             <p className="text-[11px] text-dim">Loading…</p>
           )}
           <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-            These are enforced by the risk gate on every intent. Tripping
-            automatically on breach needs position and PnL accounting, which does
-            not exist yet — today they bound sizing rather than firing on their
-            own.
+            Enforced two ways: the risk gate bounds every intent up front, and
+            each pass measures the live book against these limits and halts on a
+            breach — the fund globally, a sleeve on its own. Utilisation against
+            them is shown live above.
           </p>
         </Panel>
 
