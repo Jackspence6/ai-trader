@@ -56,6 +56,25 @@ A conversion is never "unavailable". Live ECB fix when the provider answers, the
 
 The two FX sleeves now have a computed strategy. **F1 · Carry** scores the interest differential in its profitable direction, charged the broker swap markup — the cost that turns most retail carry negative — and only reports "viable" when what survives clears a risk floor. **F2 · Trend** is a dual moving-average read, volatility-measured, that stays flat in a range. Served live at `/api/forex` and surfaced on Allocation.
 
+### Backtest — does the edge survive costs? (`src/lib/backtest/`)
+
+Replays real Binance funding history through the same carry logic (same entry
+floor, persistence filter, net-edge gate and exit rule as live) to answer, now
+rather than in months, whether funding carry actually makes money. It is
+deliberately honest: L1 single-venue only, delta-neutral so price cancels,
+modelled round-trip cost charged in full. Surfaced on a rebuilt Research screen
+with a verdict, equity curve, per-asset breakdown and explicit caveats.
+
+**The finding is sobering and important.** Over the last ~167 days, the live
+config (8% funding floor, 21-day assumed hold) would have **lost ~3.5% on
+notional with a 0% win rate across ~85 trades** — a ~35bp retail round-trip cost
+against trades that hold ~2 days and collect only a few bp of funding. Richer
+funding floors find almost nothing. The honest read: single-venue funding carry
+at retail costs churned and lost this period. That argues for cheaper execution
+(maker fills / fee tiers), exit hysteresis to stop churning, and leaning on L2
+cross-venue spreads (wider edges) rather than L1 — and it is exactly the kind of
+thing the system should be able to tell you before risking money.
+
 ### Risk-limit enforcement — the limits are real (`src/lib/engine/risk.ts`)
 
 The drawdown and daily-loss limits were displayed but never acted on —
