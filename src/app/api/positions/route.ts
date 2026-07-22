@@ -15,12 +15,15 @@ import {
   sleevePnl,
 } from "@/lib/portfolio/positions";
 import { fetchSnapshot } from "@/lib/market/venues";
+import { fetchFxQuotes } from "@/lib/market/forex";
+import { fxPrices } from "@/lib/market/fxbook";
 
 export async function GET() {
-  const [fills, funding, snapshot] = await Promise.all([
+  const [fills, funding, snapshot, fx] = await Promise.all([
     readFills(),
     readFundingPayments(),
     fetchSnapshot(),
+    fetchFxQuotes().catch(() => []),
   ]);
 
   const prices = new Map<string, number>();
@@ -33,6 +36,8 @@ export async function GET() {
   for (const q of snapshot.quotes) {
     if (q.last > 0 && !prices.has(q.asset)) prices.set(q.asset, q.last);
   }
+  // FX pair rates so forex positions mark too — same key their fills use.
+  for (const [symbol, rate] of fxPrices(fx)) prices.set(symbol, rate);
 
   const positions = buildPositions(fills, funding);
   const marked = markPositions(positions, prices);
