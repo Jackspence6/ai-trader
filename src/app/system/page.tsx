@@ -162,15 +162,15 @@ export default function SystemPage() {
         </div>
       </div>
 
-      <Panel label="NOT YET RUNNING" hint="COMPONENTS THIS SCREEN WILL COVER">
+      <Panel label="NOT YET RUNNING" hint="THE BRIDGE TO REAL CAPITAL">
         <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {[
-            "Order management — no order path exists yet, so there is nothing to report",
-            "Position and PnL accounting, with per-sleeve attribution",
-            "Balance reconciliation against venue-reported truth",
+            "Live venue execution — every order today fills in the paper simulator, priced from real quotes",
+            "Balance reconciliation against venue-reported truth (meaningless until real orders exist)",
             "Exchange-side dead-man timers and the venue-level kill switch",
             "Telegram alerting for fills, breaches and halts",
-            "Postgres / TimescaleDB — config and recordings are files today",
+            "Postgres / TimescaleDB in production — state is files on this box today",
+            "M2 dated-futures basis capture — scored every pass, held back until settlement is modelled properly",
           ].map((t) => (
             <li key={t} className="flex gap-2.5 text-[12px] text-muted">
               <span className="mt-1.75 size-1 shrink-0 bg-dim" />
@@ -179,8 +179,10 @@ export default function SystemPage() {
           ))}
         </ul>
         <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
-          See ROADMAP.md for sequencing. The recorder ships first because every
-          day it is not running is evidence that cannot be recovered later.
+          Everything else on this screen is live: the recorder, the 5-minute
+          trading loop, paper order management, per-sleeve P&amp;L attribution,
+          portfolio charter enforcement and the ML prediction ledger. See
+          ROADMAP.md for sequencing of the rest.
         </p>
       </Panel>
     </div>
