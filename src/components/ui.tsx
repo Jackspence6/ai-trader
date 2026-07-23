@@ -15,7 +15,7 @@ export function Panel({
   className,
   flush,
 }: {
-  label?: string;
+  label?: ReactNode;
   hint?: string;
   right?: ReactNode;
   children: ReactNode;

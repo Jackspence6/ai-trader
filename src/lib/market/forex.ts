@@ -29,10 +29,11 @@ export type FxPair = {
 /**
  * The pairs we follow.
  *
- * Majors only. They are the deepest, cheapest to trade, and the ones whose
- * interest differentials are large and stable enough to carry. Exotics have
- * wider spreads and worse broker swap markups — the opposite of what a
- * cost-sensitive strategy wants.
+ * The G10 majors plus two liquid high-carry pairs (ZAR, MXN). Majors are the
+ * deepest and cheapest to trade; the high-yielders are where the carry
+ * actually lives, and they are admitted only with deliberately punitive
+ * modelled spreads — the backtest replays these exact pairs at those tolls,
+ * so a pair earns capital only if its carry clears its own cost of passage.
  */
 export const FX_PAIRS: FxPair[] = [
   { symbol: "EURUSD", base: "EUR", quote: "USD" },
@@ -42,6 +43,13 @@ export const FX_PAIRS: FxPair[] = [
   { symbol: "USDCAD", base: "USD", quote: "CAD" },
   { symbol: "USDCHF", base: "USD", quote: "CHF" },
   { symbol: "USDZAR", base: "USD", quote: "ZAR" },
+  // G10 completions and one more liquid high-carry pair, added 2026-07 to
+  // widen the carry scan's menu. Same doctrine as ZAR: the wide modelled
+  // spread is the toll, and the pair earns capital only if the backtest —
+  // which replays these exact pairs — says the carry clears it.
+  { symbol: "NZDUSD", base: "NZD", quote: "USD" },
+  { symbol: "USDSEK", base: "USD", quote: "SEK" },
+  { symbol: "USDMXN", base: "USD", quote: "MXN" },
 ];
 
 /**
@@ -65,6 +73,9 @@ export const POLICY_RATES: Record<string, number> = {
   CAD: 0.0275,
   CHF: 0.01,
   ZAR: 0.0725,
+  NZD: 0.0225,
+  SEK: 0.0175,
+  MXN: 0.0725,
 };
 
 export const POLICY_RATES_AS_OF = "2026-07-01";

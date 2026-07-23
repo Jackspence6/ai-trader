@@ -65,6 +65,7 @@ import {
   recordOrders,
 } from "@/lib/oms/store";
 import { appendLog, readJson, writeJson } from "@/lib/store/kv";
+import { maybeRevalidate } from "@/lib/research/revalidate";
 
 /** Durable per-pass history. Read by the performance screen. */
 export const TRADE_LOG = "trade_passes";
@@ -611,12 +612,29 @@ export async function runTradingPass(): Promise<PassOutcome> {
 
   await appendLog(TRADE_LOG, [record]);
 
+  // Automated re-validation, twice a day, AFTER the trading decisions — the
+  // backtests take a minute or two of history fetches and must never delay a
+  // trade or fail a pass. Advisory only: verdicts raise alerts, never move
+  // capital (GOVERNANCE.md §2 — allocations change with a written reason).
+  let research = "";
+  try {
+    const snap = await maybeRevalidate();
+    if (snap) {
+      research =
+        ` · research: ${snap.rows.length} strategies re-validated` +
+        (snap.alerts.length > 0 ? `, ${snap.alerts.length} alert(s)` : "");
+    }
+  } catch (e) {
+    research = ` · research failed: ${e instanceof Error ? e.message : "unknown"}`;
+  }
+
   const delta = after.navUsd - fund.navUsd;
   return {
     record,
     summary:
       `scored ${record.scored} · executed ${record.executed} · ` +
       `closed ${record.closed} · open ${record.openPositions} · ` +
-      `NAV $${after.navUsd.toFixed(2)} (${delta >= 0 ? "+" : ""}${delta.toFixed(4)})`,
+      `NAV $${after.navUsd.toFixed(2)} (${delta >= 0 ? "+" : ""}${delta.toFixed(4)})` +
+      research,
   };
 }

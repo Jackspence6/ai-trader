@@ -26,6 +26,20 @@ type StrategyPnl = {
 
 type PerformanceResponse = { report: { byStrategy: StrategyPnl[] } };
 
+type VerdictsResponse = {
+  latest: {
+    ts: number;
+    rows: {
+      code: string;
+      annualisedReturnPct: number;
+      health: "healthy" | "watch" | "failing";
+      reasons: string[];
+    }[];
+  } | null;
+};
+
+const HEALTH_TONE = { healthy: "up", watch: "warn", failing: "down" } as const;
+
 type Standing = "funded" | "shadow" | "waiting";
 
 const STRATEGIES: {
@@ -136,6 +150,9 @@ export default function StrategiesPage() {
   const perf = useLive<PerformanceResponse>("/api/performance", 30_000);
   const pnlOf = (code: string) =>
     perf.data?.report.byStrategy.find((s) => s.key === code);
+  const research = useLive<VerdictsResponse>("/api/research/verdicts", 120_000);
+  const healthOf = (code: string) =>
+    research.data?.latest?.rows.find((r) => r.code === code);
 
   return (
     <div className="space-y-3 p-3">
@@ -230,6 +247,32 @@ export default function StrategiesPage() {
                 </span>
                 <span className="micro text-dim">· {s.standingNote}</span>
               </div>
+
+              {/* automated re-validation verdict, joined live by code */}
+              {(() => {
+                const h = healthOf(s.code);
+                if (!h) return null;
+                return (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="flex items-center gap-1">
+                      <Micro>BACKTEST</Micro>
+                      <Info term="health" />
+                    </span>
+                    <span title={h.reasons.join(" · ")}>
+                      <Tag tone={HEALTH_TONE[h.health]}>{h.health.toUpperCase()}</Tag>
+                    </span>
+                    <span
+                      className={cx(
+                        "tnum micro",
+                        h.annualisedReturnPct >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {h.annualisedReturnPct >= 0 ? "+" : ""}
+                      {(h.annualisedReturnPct * 100).toFixed(1)}%/yr
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* live record */}
               <div className="mt-3 grid grid-cols-4 gap-2 border-t border-line pt-3">

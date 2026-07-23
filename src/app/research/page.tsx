@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavChart } from "@/components/charts";
 import { useLive } from "@/lib/live";
-import { cx, Micro, Panel, Stat, Tag } from "@/components/ui";
+import { cx, Info, Micro, Panel, Stat, Tag } from "@/components/ui";
 
 type MlResponse = {
   points: number;
@@ -146,6 +146,8 @@ export default function ResearchPage() {
 
   return (
     <div className="space-y-3 p-3">
+      <RevalidationPanel />
+
       <Panel
         label="FUNDING-CARRY BACKTEST"
         hint="L1 · REAL BINANCE HISTORY · SAME COST MODEL"
@@ -934,6 +936,231 @@ function FxPanel() {
 
           <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
             {data.caveats.join(" ")}
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------ revalidation */
+
+type RevalidationRow = {
+  code: string;
+  name: string;
+  funded: boolean;
+  periodDays: number;
+  annualisedReturnPct: number;
+  sharpe: number | null;
+  maxDrawdownPct: number;
+  trades: number;
+  winRate: number;
+  health: "healthy" | "watch" | "failing";
+  reasons: string[];
+  deltaAnnualisedPct: number | null;
+};
+
+type RevalidationSnapshot = {
+  ts: number;
+  durationMs: number;
+  rows: RevalidationRow[];
+  alerts: string[];
+  errors: string[];
+};
+
+type VerdictsResponse = {
+  latest: RevalidationSnapshot | null;
+  history: RevalidationSnapshot[];
+  intervalMs: number;
+};
+
+const HEALTH_TONE = { healthy: "up", watch: "warn", failing: "down" } as const;
+
+function agoLabel(ts: number): string {
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60_000));
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+/**
+ * The automated verdicts — every strategy's backtest re-run by the trading
+ * loop twice a day and graded into a health state. This panel is the reason
+ * an operator does not have to remember to check the panels below it.
+ */
+function RevalidationPanel() {
+  const { data } = useLive<VerdictsResponse>("/api/research/verdicts", 60_000);
+  const [forced, setForced] = useState<RevalidationSnapshot | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const fetched = data?.latest ?? null;
+  const latest =
+    forced && (!fetched || forced.ts >= fetched.ts) ? forced : fetched;
+
+  const runNow = async () => {
+    setRunning(true);
+    setRunError(null);
+    try {
+      const res = await fetch("/api/research/verdicts", { method: "POST" });
+      const d = (await res.json()) as { snapshot?: RevalidationSnapshot; error?: string };
+      if (d.snapshot) setForced(d.snapshot);
+      else setRunError(d.error ?? "Re-validation failed");
+    } catch {
+      setRunError("Re-validation request failed");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Panel
+      label={
+        <span className="flex items-center gap-1.5">
+          AUTOMATED RE-VALIDATION
+          <Info term="revalidation" />
+        </span>
+      }
+      hint="EVERY STRATEGY · TWICE A DAY · REAL HISTORY"
+      right={
+        <div className="flex items-center gap-2">
+          {latest && (
+            <span className="micro text-dim">
+              checked {agoLabel(latest.ts)} · took {(latest.durationMs / 1000).toFixed(0)}s
+            </span>
+          )}
+          <button
+            onClick={runNow}
+            disabled={running}
+            className={cx(
+              "micro border px-1.5 py-1 transition-colors",
+              running
+                ? "border-line-bright text-dim"
+                : "border-accent/50 text-accent hover:bg-accent/10",
+            )}
+          >
+            {running ? "RUNNING…" : "RUN NOW"}
+          </button>
+        </div>
+      }
+    >
+      {runError && <p className="mb-3 text-[12px] text-down">{runError}</p>}
+
+      {!latest ? (
+        <p className="text-[12px] leading-relaxed text-dim">
+          No automated run recorded yet — the trading loop runs the first one on
+          its next pass, then re-runs every 12 hours. Or press RUN NOW.
+        </p>
+      ) : (
+        <>
+          {latest.alerts.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              {latest.alerts.map((a) => (
+                <div
+                  key={a}
+                  className="flex items-start gap-2 border border-warn/30 bg-warn/5 px-3 py-2"
+                >
+                  <span className="mt-1 size-1.5 shrink-0 bg-warn" />
+                  <span className="text-[12px] leading-relaxed text-muted">{a}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-line">
+                  <Th>STRATEGY</Th>
+                  <Th>CAPITAL</Th>
+                  <Th>
+                    <span className="flex items-center gap-1">
+                      HEALTH
+                      <Info term="health" />
+                    </span>
+                  </Th>
+                  <Th right>ANN. RETURN</Th>
+                  <Th right>Δ VS LAST</Th>
+                  <Th right>SHARPE</Th>
+                  <Th right>MAX DD</Th>
+                  <Th right>TRADES</Th>
+                  <Th right>WIN</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {latest.rows.map((r) => (
+                  <tr key={r.code} className="border-b border-line/60 hover:bg-raised/40">
+                    <Td>
+                      <span className="text-ink">{r.code}</span>{" "}
+                      <span className="text-dim">{r.name}</span>
+                    </Td>
+                    <Td>
+                      <span className={cx("micro", r.funded ? "text-accent" : "text-dim")}>
+                        {r.funded ? "FUNDED" : "NONE"}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span title={r.reasons.join(" · ")}>
+                        <Tag tone={HEALTH_TONE[r.health]}>{r.health.toUpperCase()}</Tag>
+                      </span>
+                    </Td>
+                    <Td right>
+                      <span
+                        className={cx(
+                          "tnum",
+                          r.annualisedReturnPct >= 0 ? "text-up" : "text-down",
+                        )}
+                      >
+                        {r.annualisedReturnPct >= 0 ? "+" : ""}
+                        {(r.annualisedReturnPct * 100).toFixed(1)}%
+                      </span>
+                    </Td>
+                    <Td right>
+                      {r.deltaAnnualisedPct === null ? (
+                        <span className="text-dim">—</span>
+                      ) : (
+                        <span
+                          className={cx(
+                            "tnum",
+                            r.deltaAnnualisedPct >= 0 ? "text-up" : "text-down",
+                          )}
+                        >
+                          {r.deltaAnnualisedPct >= 0 ? "+" : ""}
+                          {(r.deltaAnnualisedPct * 100).toFixed(1)}pp
+                        </span>
+                      )}
+                    </Td>
+                    <Td right>
+                      <span className="tnum">{r.sharpe === null ? "—" : r.sharpe.toFixed(2)}</span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum">{(r.maxDrawdownPct * 100).toFixed(1)}%</span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum">{r.trades}</span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum">{(r.winRate * 100).toFixed(0)}%</span>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {latest.errors.length > 0 && (
+            <p className="mt-2 text-[11px] text-down">
+              Engines that failed this run: {latest.errors.join(" · ")}
+            </p>
+          )}
+
+          <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            Hover a health state for its reasons. The loop re-runs every strategy
+            through its own backtest — same code, same costs, fresh history —
+            every 12 hours. Verdicts are advisory: an alert here never moves
+            capital by itself; allocations change on the Portfolios page with a
+            written reason, per the charter.
           </p>
         </>
       )}

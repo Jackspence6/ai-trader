@@ -33,6 +33,12 @@ const SPREAD_BPS: Record<string, number> = {
   USDCAD: 2.2,
   USDCHF: 2.2,
   USDZAR: 35,
+  NZDUSD: 2.5,
+  // The Scandies trade wider than the majors at retail; MXN is the most
+  // liquid EM pair but still carries an EM toll. Deliberately pessimistic,
+  // same as ZAR — carry that cannot clear these spreads is not carry.
+  USDSEK: 8,
+  USDMXN: 12,
 };
 
 const DEFAULT_SPREAD_BPS = 5;

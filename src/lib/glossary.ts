@@ -55,6 +55,10 @@ export const GLOSSARY: Record<string, string> = {
     "The gap between a dated future's price and today's spot price. It shrinks to zero at expiry, mechanically — the trade captures that convergence.",
   equity:
     "Allocation plus everything this book has made or lost — what it's actually worth right now.",
+  revalidation:
+    "Every strategy is automatically re-run against fresh market history twice a day, using the exact same code that trades live. A strategy that stops earning in the replay gets flagged here before it can quietly bleed the live book.",
+  health:
+    "The automated verdict from the latest re-validation. HEALTHY earns after costs; WATCH is earning but weakly, thinly, or less than half of what it earned last check; FAILING loses after costs and should not hold capital.",
 };
 
 export type GlossaryKey = keyof typeof GLOSSARY;
