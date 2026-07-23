@@ -137,6 +137,8 @@ export default function CommandCenter() {
         status={fundData.status}
       />
 
+      <MachineryStrip />
+
       {/* ============================================================ hero */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
         <Panel
@@ -251,6 +253,8 @@ export default function CommandCenter() {
         <CryptoSignals opps={cryptoOpps} connecting={signals.status === "connecting"} />
         <ForexSignals signals={fxSignals} connecting={forex.status === "connecting"} />
       </div>
+
+      <StreamsPanel />
 
       <BasisPanel signals={basis.data?.signals ?? []} connecting={basis.status === "connecting"} />
 
@@ -763,5 +767,149 @@ function SigTd({ children, right }: { children: React.ReactNode; right?: boolean
     <td className={cx("whitespace-nowrap px-3 py-2 text-muted", right ? "text-right" : "text-left")}>
       {children}
     </td>
+  );
+}
+
+/* ------------------------------------------------------------ Mission strip */
+
+type EngineHealthResponse = {
+  health: {
+    state: string;
+    lastPassAgeSeconds: number | null;
+    passes: number;
+    executed: number;
+    closed: number;
+    zeroScoredStreak: number;
+  };
+  ml: {
+    status: "shadow" | "confirming";
+    pending: number;
+    matured: number;
+    precisionAt70: number | null;
+    baselinePrecision: number | null;
+  } | null;
+};
+
+/** Is the machinery deciding, and has the model earned anything yet? */
+function MachineryStrip() {
+  const { data } = useLive<EngineHealthResponse>("/api/engine", 30_000);
+  const h = data?.health;
+  const ml = data?.ml;
+  const ok = h?.state === "running";
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border border-line bg-panel/40 px-3 py-2">
+      <span className="flex items-center gap-1.5">
+        <StatusDot state={ok ? "ok" : h ? "bad" : "idle"} pulse={ok} />
+        <span className="micro text-muted">
+          LOOP {h ? h.state.toUpperCase() : "…"}
+          {h?.lastPassAgeSeconds != null && ` · ${Math.round(h.lastPassAgeSeconds)}S AGO`}
+        </span>
+      </span>
+      {h && (
+        <span className="micro text-dim">
+          WINDOW: {h.executed} IN · {h.closed} OUT · {h.passes} PASSES
+        </span>
+      )}
+      <span className="micro ml-auto text-dim">
+        ML {ml ? ml.status.toUpperCase() : "…"}
+        {ml &&
+          (ml.matured > 0
+            ? ` · ${ml.matured} GRADED · ${
+                ml.precisionAt70 === null ? "—" : `${(ml.precisionAt70 * 100).toFixed(0)}%`
+              } VS ${
+                ml.baselinePrecision === null
+                  ? "—"
+                  : `${(ml.baselinePrecision * 100).toFixed(0)}%`
+              }`
+            : ` · ${ml.pending} PREDICTIONS MATURING`)}
+      </span>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------- Strategy streams */
+
+type StreamsPositionsResponse = {
+  sleeves: { sleeveId: string; realisedUsd: number; fundingUsd: number; feesUsd: number; unrealisedUsd: number | null; totalUsd: number }[];
+  positions: { sleeveId: string }[];
+};
+type StreamsConfigResponse = {
+  config: { sleeves: { sleeveId: string; allocatedUsd: number; enabled: boolean }[] };
+};
+
+/** The evidence verdict behind each funded stream — why the money sits there. */
+const STREAM_NOTES: Record<string, { name: string; verdict: string }> = {
+  core: { name: "Crypto carry · L1 + L3", verdict: "breakeven at taker, positive at maker" },
+  "fx-carry": { name: "FX carry · F1", verdict: "earns · +4.3%/3y validated" },
+  systematic: { name: "Crypto trend · H1", verdict: "positive in every tested cell" },
+};
+
+function StreamsPanel() {
+  const pos = useLive<StreamsPositionsResponse>("/api/positions", 25_000);
+  const cfg = useLive<StreamsConfigResponse>("/api/config", 60_000);
+
+  const sleeves = (cfg.data?.config.sleeves ?? []).filter(
+    (s) => s.enabled && s.allocatedUsd > 0,
+  );
+  const pnlOf = (id: string) => pos.data?.sleeves.find((s) => s.sleeveId === id);
+  const openOf = (id: string) =>
+    pos.data?.positions.filter((p) => p.sleeveId === id).length ?? 0;
+
+  return (
+    <Panel
+      label="STRATEGY STREAMS"
+      hint="WHERE THE MONEY SITS, AND THE EVIDENCE THAT PUT IT THERE"
+      flush
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="micro px-3 py-2 text-left font-normal text-dim">STREAM</th>
+              <th className="micro px-3 py-2 text-right font-normal text-dim">ALLOCATED</th>
+              <th className="micro px-3 py-2 text-right font-normal text-dim">OPEN</th>
+              <th className="micro px-3 py-2 text-right font-normal text-dim">INCOME</th>
+              <th className="micro px-3 py-2 text-right font-normal text-dim">P&L</th>
+              <th className="micro px-3 py-2 text-left font-normal text-dim">EVIDENCE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sleeves.map((s) => {
+              const note = STREAM_NOTES[s.sleeveId];
+              const pnl = pnlOf(s.sleeveId);
+              const total = pnl?.totalUsd ?? 0;
+              return (
+                <tr key={s.sleeveId} className="border-b border-line/60 hover:bg-raised/40">
+                  <td className="px-3 py-2 text-ink">{note?.name ?? s.sleeveId}</td>
+                  <td className="tnum px-3 py-2 text-right text-muted">
+                    ${s.allocatedUsd.toLocaleString("en-US")}
+                  </td>
+                  <td className="tnum px-3 py-2 text-right text-muted">{openOf(s.sleeveId)}</td>
+                  <td className="tnum px-3 py-2 text-right text-up">
+                    +${(pnl?.fundingUsd ?? 0).toFixed(2)}
+                  </td>
+                  <td
+                    className={cx(
+                      "tnum px-3 py-2 text-right",
+                      total >= 0 ? "text-up" : "text-down",
+                    )}
+                  >
+                    {total >= 0 ? "+" : ""}${total.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-2 text-[11px] text-dim">{note?.verdict ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="px-3 py-2.5 text-[11px] leading-relaxed text-dim">
+          Defunded by evidence: L2 cross-venue spread (mean-reverts before paying
+          its costs) · F2 FX trend (negative in all 12 parameter cells) · B1 DCA
+          accumulation (lost money over the last 1,000 days). All still scored in
+          shadow — capital returns only if the evidence changes.
+        </p>
+      </div>
+    </Panel>
   );
 }

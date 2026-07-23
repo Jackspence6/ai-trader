@@ -448,6 +448,23 @@ exempt from the generic stop; its exits are the backtested trail
 Donchian band, with the sleeve-level 25% drawdown halt as the blast-radius
 cap.
 
+### Overview becomes mission control (2026-07-23)
+
+The front page now answers the three questions an operator actually has on
+arrival: **is the machinery deciding** (loop state, last pass, entries/exits
+in the window, ML standing — one strip), **where does the money sit and why**
+(the Strategy Streams table: per-sleeve allocation, open positions, income,
+P&L, and the evidence verdict that put capital there), and **what was ruled
+out** (the defunded list — L2, F2, B1 — with the one-line reason each, so the
+absence of a strategy reads as a decision, not a gap).
+
+**Flagged next avenue — M2 dated-futures basis.** Live-scored at +1.74% net
+APR on the BTC quarterly (cash-and-carry, deterministic convergence at
+expiry — structurally safer than funding carry). Execution needs honest
+dated-futures modelling: a third market kind, expiry settlement in the
+simulated venue, convergence accrual, and expiry-aware exits. Sized at
+roughly a day of careful work; not rushed into a half-honest version.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the

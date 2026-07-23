@@ -8,6 +8,7 @@
  */
 
 import { loopHealth } from "@/lib/engine/health";
+import { readScoreboard } from "@/lib/ml/ledger";
 import { TRADE_LOG, type TradePassRecord } from "@/lib/engine/pass";
 import { readLog } from "@/lib/store/kv";
 
@@ -16,10 +17,12 @@ const WINDOW = 60;
 export async function GET() {
   const records = await readLog<TradePassRecord>(TRADE_LOG, WINDOW);
   const health = loopHealth(records, Date.now());
+  const ml = await readScoreboard().catch(() => null);
 
   return Response.json(
     {
       health,
+      ml,
       // Newest first for display; the health window and this list share bounds.
       recent: [...records]
         .sort((a, b) => b.ts - a.ts)
