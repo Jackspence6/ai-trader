@@ -19,6 +19,8 @@ import {
 } from "./config";
 
 export type AuditEntry = {
+  /** Why the operator (or the system) moved capital — GOVERNANCE.md §2. */
+  reason?: string;
   ts: number;
   changes: { field: string; from: unknown; to: unknown }[];
   adjustments: string[];
@@ -44,6 +46,7 @@ export async function readConfig(): Promise<EngineConfig> {
 
 export async function writeConfig(
   input: unknown,
+  reason?: string,
 ): Promise<{ config: EngineConfig; adjustments: string[] }> {
   const previous = await readConfig();
   const { config, adjustments } = sanitiseConfig(input);
@@ -55,7 +58,7 @@ export async function writeConfig(
   await writeJson(KEYS.config, config);
 
   if (changes.length > 0 || adjustments.length > 0) {
-    const entry: AuditEntry = { ts: Date.now(), changes, adjustments };
+    const entry: AuditEntry = { ts: Date.now(), changes, adjustments, reason };
     await appendLog(LOGS.configAudit, [entry]);
   }
 

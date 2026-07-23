@@ -22,7 +22,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { config, adjustments } = await writeConfig(body);
+  const reason =
+    typeof (body as { reason?: unknown })?.reason === "string"
+      ? ((body as { reason: string }).reason || undefined)
+      : undefined;
+  const { config, adjustments } = await writeConfig(body, reason);
   return Response.json(
     { config, adjustments },
     { headers: { "cache-control": "no-store" } },

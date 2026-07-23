@@ -112,11 +112,11 @@ export const NAV: NavGroup[] = [
       },
       {
         key: "allocation",
-        label: "Allocation",
+        label: "Portfolios",
         href: "/allocation",
-        hint: "How capital is split between strategy groups (sleeves)",
+        hint: "Fund each portfolio, see what money is where and how it is doing",
         icon: "allocation",
-        aliases: ["sleeves", "capital"],
+        aliases: ["allocation", "sleeves", "capital", "fund"],
       },
       {
         key: "exchanges",
