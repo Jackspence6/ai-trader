@@ -36,7 +36,8 @@ export type RejectionCode =
   | "sleeve_budget_exhausted"
   | "sleeve_position_cap"
   | "sleeve_undercapitalised"
-  | "trend_not_engaged";
+  | "trend_not_engaged"
+  | "ml_veto";
 
 export const REJECTION_LABELS: Record<RejectionCode, string> = {
   net_edge_below_threshold: "Net edge below threshold",
@@ -59,6 +60,7 @@ export const REJECTION_LABELS: Record<RejectionCode, string> = {
   sleeve_position_cap: "Exceeds sleeve position cap",
   sleeve_undercapitalised: "Sleeve below minimum viable capital",
   trend_not_engaged: "No engaged trend to follow",
+  ml_veto: "Persistence model vetoed the entry",
 };
 
 /**

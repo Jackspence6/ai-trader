@@ -36,6 +36,17 @@ import {
   trainLogistic,
   type FundingSample,
 } from "@/lib/ml/persistence";
+import {
+  appendMatured,
+  maturePredictions,
+  readMatured,
+  readPending,
+  readScoreboard,
+  scorePredictions,
+  writePending,
+  writeScoreboard,
+  type PredictionRecord,
+} from "@/lib/ml/ledger";
 import { classifyFundingRegime } from "@/lib/calc/funding";
 import { evaluateExits } from "@/lib/oms/exits";
 import { evaluateRisk, type RiskState, type RiskBreach } from "./risk";
@@ -307,10 +318,12 @@ export async function runTradingPass(): Promise<PassOutcome> {
   );
   const fundingHistory: Record<string, number[]> = {};
   const fundingSeries: Record<string, FundingSample[]> = {};
+  const fundingTimed: Record<string, { t: number; rate: number }[]> = {};
   histories.forEach((h, i) => {
     if (h.status === "fulfilled") {
       const key = `Binance:${UNIVERSE[i]}`;
       fundingSeries[key] = h.value.map((r) => ({ rate: r.rate, apr: r.apr }));
+      fundingTimed[key] = h.value.map((r) => ({ t: r.t, rate: r.rate }));
       fundingHistory[key] = h.value
         .slice(-config.fundingRegimeWindow)
         .map((r) => r.apr);
@@ -442,11 +455,17 @@ export async function runTradingPass(): Promise<PassOutcome> {
   );
   if (exit.orders.length > 0) await recordOrders(exit.orders);
 
+  // The model's live standing decides whether it may veto weak L1 entries.
+  // Evidence-gated: shadow until the matured ledger beats the baseline.
+  const scoreboardBefore = await readScoreboard().catch(() => null);
+  const mlConfirming = scoreboardBefore?.status === "confirming";
+
   const result = await runPaperPass({
     config,
     opportunities,
     venue,
     prices,
+    mlConfirming,
     halted: false,
     dataAgeSeconds,
     daysHeldAboveThreshold,
@@ -460,6 +479,53 @@ export async function runTradingPass(): Promise<PassOutcome> {
     recordOrders(orders),
     recordFills([...exit.fills, ...result.fills]),
   ]);
+
+  // --- prediction ledger: record, mature, score ----------------------------
+  // Every live prediction is written down now and graded in 7 days against
+  // what funding actually did. This is the loop that lets the model earn (and
+  // lose) gating power on evidence rather than on its backtest.
+  try {
+    const now = Date.now();
+    const executedL1 = new Set(
+      result.decisions
+        .filter((d) => d.executed && d.strategy === "L1")
+        .map((d) => d.asset),
+    );
+    const newRows: PredictionRecord[] = Object.entries(persistence).map(
+      ([key, probability]) => {
+        const aprs = fundingHistory[key] ?? [];
+        const sorted = [...aprs].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median =
+          sorted.length === 0
+            ? 0
+            : sorted.length % 2 === 0
+              ? (sorted[mid - 1] + sorted[mid]) / 2
+              : sorted[mid];
+        return {
+          ts: now,
+          key,
+          probability,
+          baselineSaysPersist: median > 0,
+          executed: executedL1.has(key.split(":")[1]),
+        };
+      },
+    );
+
+    const pendingRows = [...(await readPending()), ...newRows];
+    const { stillPending, matured } = maturePredictions(
+      pendingRows,
+      (key, ts) =>
+        fundingTimed[key]?.filter((r) => r.t > ts).map((r) => r.rate),
+      now,
+    );
+    if (matured.length > 0) await appendMatured(matured);
+    await writePending(stillPending);
+    const allMatured = await readMatured();
+    await writeScoreboard(scorePredictions(allMatured, stillPending.length, now));
+  } catch {
+    // Ledger bookkeeping must never fail a trading pass.
+  }
 
   const after = await getFundState(prices);
 

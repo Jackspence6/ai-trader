@@ -389,6 +389,27 @@ parameters: post-only maker entries are the one improvement left, worth
 ~0.5%/yr on notional, and they need real order-book behaviour (A3/A4
 venue work) to implement honestly rather than another backtest.
 
+### The self-grading loop: the model now learns from its own record (2026-07-23)
+
+`lib/ml/ledger.ts` — every live persistence prediction is written down at
+decision time, matured 7 days later against what funding actually did, and
+scored against the baseline on a permanent append-only log. The scoreboard
+splits decision quality by what the engine did: bad takes and regretted
+rejections are counted forever, not remembered vaguely.
+
+**Autonomy is earned, not granted.** The model starts in SHADOW. When its
+matured live record beats the baseline over 40+ samples it is promoted to
+CONFIRMING and gains exactly one power: vetoing L1 entries whose regime it
+prices below even odds (`ml_veto` rejection code, visible on the feed). If
+its live edge decays, the same test demotes it automatically. It never
+generates a trade. First matured grades arrive 7 days after deployment;
+the Backtests screen shows the live record accruing.
+
+**What will cost money later (all currently $0):** Claude-based regime
+classifier (~$1/mo), paid data feeds (not before live edge is proven),
+maker-tier volume / Tokyo VPS ($5–12/mo), exchange accounts for live
+micro-positions (free, needs sign-up — ask when ready).
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the

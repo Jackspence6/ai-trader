@@ -149,6 +149,13 @@ export type PaperContext = {
   halted: boolean;
   dataAgeSeconds: number;
   daysHeldAboveThreshold?: number;
+  /**
+   * When true, the persistence model has EARNED confirmation power on its
+   * matured live record (lib/ml/ledger.ts) and may veto L1 entries whose
+   * regime it prices below even odds. Veto-only, never generative: the model
+   * can stop a trade, never create one (DESIGN.md principle 7).
+   */
+  mlConfirming?: boolean;
   /** Existing fills, so position limits account for what is already open. */
   existingFills?: Fill[];
   funding?: FundingPayment[];
@@ -324,15 +331,33 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
           paperMode: true,
         });
 
-    if (!decision.allowed) {
+    // The model's earned veto: an L1 carry whose funding regime the model
+    // prices below even odds is skipped while the model is in CONFIRMING
+    // standing. If its live record decays, standing reverts and the veto
+    // disappears — autonomy stays tied to evidence.
+    const vetoed =
+      decision.allowed &&
+      ctx.mlConfirming === true &&
+      opp.strategy === "L1" &&
+      opp.persistenceProb !== undefined &&
+      opp.persistenceProb < 0.5;
+    const finalDecision = vetoed
+      ? ({
+          allowed: false,
+          code: "ml_veto",
+          detail: `Model prices persistence at ${(100 * (opp.persistenceProb ?? 0)).toFixed(0)}% — below even odds`,
+        } as const)
+      : decision;
+
+    if (!finalDecision.allowed) {
       decisions.push({
         opportunityId: opp.id,
         asset: opp.asset,
         strategy: opp.strategy,
         sleeveId,
         executed: false,
-        rejectionCode: decision.code,
-        detail: decision.detail,
+        rejectionCode: finalDecision.code,
+        detail: finalDecision.detail,
         orders: [],
         fills: [],
         predictedNetBps: opp.netBps,
@@ -342,7 +367,7 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
       continue;
     }
 
-    const legs = planLegs(opp, decision.sizedNotionalUsd, prices);
+    const legs = planLegs(opp, finalDecision.sizedNotionalUsd, prices);
     if (!legs) {
       decisions.push({
         opportunityId: opp.id,
@@ -362,7 +387,7 @@ export async function runPaperPass(ctx: PaperContext): Promise<PaperRunResult> {
     }
 
     const price = prices.get(opp.asset)!;
-    const qty = decision.sizedNotionalUsd / price;
+    const qty = finalDecision.sizedNotionalUsd / price;
 
     const legOrders: Order[] = [];
     const legFills: Fill[] = [];

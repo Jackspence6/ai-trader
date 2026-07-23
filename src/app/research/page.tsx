@@ -16,6 +16,15 @@ import { cx, Micro, Panel, Stat, Tag } from "@/components/ui";
 
 type MlResponse = {
   points: number;
+  live?: {
+    pending: number;
+    matured: number;
+    precisionAt70: number | null;
+    baselinePrecision: number | null;
+    takes: { count: number; persisted: number };
+    rejects: { count: number; persisted: number };
+    status: "shadow" | "confirming";
+  } | null;
   assets: number;
   walkForward: {
     samples: number;
@@ -461,6 +470,43 @@ function MlPanel() {
       {data?.error && <div className="text-[12px] text-down">{data.error}</div>}
       {wf && data && (
         <>
+          <div className="mb-3 flex flex-wrap items-center gap-2 border border-accent/30 bg-accent/5 px-3 py-2.5">
+            <Tag tone="accent">
+              LIVE RECORD · {data.live?.status === "confirming" ? "CONFIRMING" : "SHADOW"}
+            </Tag>
+            <span className="text-[12px] text-muted">
+              Every live prediction is written down and graded 7 days later
+              against what funding actually did.{" "}
+              {data.live && data.live.matured > 0 ? (
+                <>
+                  Matured: <span className="tnum text-ink">{data.live.matured}</span> ·
+                  live precision ≥70%:{" "}
+                  <span className="tnum text-ink">
+                    {data.live.precisionAt70 === null
+                      ? "—"
+                      : `${(data.live.precisionAt70 * 100).toFixed(1)}%`}
+                  </span>{" "}
+                  vs baseline{" "}
+                  <span className="tnum">
+                    {data.live.baselinePrecision === null
+                      ? "—"
+                      : `${(data.live.baselinePrecision * 100).toFixed(1)}%`}
+                  </span>{" "}
+                  · takes {data.live.takes.persisted}/{data.live.takes.count} persisted ·
+                  regretted rejections {data.live.rejects.persisted}/{data.live.rejects.count}.
+                </>
+              ) : (
+                <>
+                  {data.live?.pending ?? 0} predictions pending maturity — the first
+                  grades arrive 7 days after they were made. When the matured record
+                  beats the baseline over 40+ samples, the model earns the power to
+                  VETO weak carry entries; if its edge decays, it loses it again
+                  automatically. It never generates a trade.
+                </>
+              )}
+            </span>
+          </div>
+
           <div
             className={cx(
               "mb-4 flex flex-wrap items-center gap-2 border px-3 py-2.5",

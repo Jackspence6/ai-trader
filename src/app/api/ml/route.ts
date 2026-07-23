@@ -11,6 +11,7 @@
 
 import { fetchBinanceFundingHistory } from "@/lib/market/venues";
 import { UNIVERSE } from "@/lib/market/types";
+import { readScoreboard } from "@/lib/ml/ledger";
 import {
   buildDataset,
   FEATURE_NAMES,
@@ -73,9 +74,12 @@ export async function GET(request: Request) {
     })(),
   }));
 
+  const live = await readScoreboard().catch(() => null);
+
   return Response.json(
     {
       points,
+      live,
       assets: byAsset.length,
       walkForward: wf,
       current,
