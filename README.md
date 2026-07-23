@@ -77,4 +77,5 @@ Postgres in Docker, the dashboard.
 - `DESIGN.md` — architecture and principles (the honest economics up front)
 - `STRATEGY.md` — what we trade and why
 - `ROADMAP.md` — done / in flight / next, with dated findings
+- `ML.md` — the machine-learning plan: what to build, costs, who does what
 - `EXPANSION.md` — venue and strategy expansion notes
