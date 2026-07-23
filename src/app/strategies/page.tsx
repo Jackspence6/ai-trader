@@ -139,6 +139,65 @@ export default function StrategiesPage() {
 
   return (
     <div className="space-y-3 p-3">
+      {/* ------------------------------------------------ how we make money */}
+      <Panel label="HOW WE MAKE MONEY" hint="THE THESIS, IN PLAIN LANGUAGE">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div>
+            <Micro className="mb-2 text-accent">1 · WE COLLECT, WE DON&apos;T PREDICT</Micro>
+            <p className="text-[12px] leading-relaxed text-muted">
+              Most of our money comes from being <em>paid to hold positions</em>,
+              not from guessing where prices go. Crypto perpetual futures pay
+              funding
+              <Info term="funding" className="mx-1 align-middle" />
+              every 8 hours; currencies pay interest-rate differences daily
+              <Info term="carry" className="mx-1 align-middle" />. We structure
+              positions so price moves largely cancel out
+              <Info term="delta_neutral" className="mx-1 align-middle" />
+              and the payments drip in regardless of direction. It is slow,
+              boring, and the only kind of edge that survives at our size.
+            </p>
+          </div>
+          <div>
+            <Micro className="mb-2 text-warn">2 · ONE MEASURED BET ON DIRECTION</Micro>
+            <p className="text-[12px] leading-relaxed text-muted">
+              The exception is the Aggressive book: crypto trends hard, and a
+              breakout
+              <Info term="breakout" className="mx-1 align-middle" />
+              strategy with a mechanical stop
+              <Info term="stop" className="mx-1 align-middle" />
+              captures that without pretending to predict it. Every trade risks
+              a fixed 1% of its book at a pre-agreed exit — being wrong is
+              cheap, being right is allowed to run. It exists because it earns
+              in different weather than the carry books.
+            </p>
+          </div>
+          <div>
+            <Micro className="mb-2 text-s3">3 · EVIDENCE DECIDES, ALWAYS</Micro>
+            <p className="text-[12px] leading-relaxed text-muted">
+              Every strategy was replayed against years of real market history
+              before touching capital, and three that <em>sounded</em> good
+              failed the test — they run unfunded, in shadow
+              <Info term="shadow" className="mx-1 align-middle" />, below. A
+              machine-learning model grades the funding regime behind every
+              carry entry
+              <Info term="persistence" className="mx-1 align-middle" />
+              and is itself graded weekly on its own predictions. Capital sits
+              exactly where the verdicts point, moves only with a written
+              reason, and every portfolio halts itself at a charter drawdown
+              <Info term="drawdown" className="mx-1 align-middle" />
+              limit before a bad run can spread.
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+          Honest expectations: the carry books target slow single-digit-to-low-teens
+          annual income on deployed capital; the trend book adds lumpy directional
+          return with defined losses. Some days lose. The system&apos;s job is to make
+          the wins structural and the losses bounded — and to show you every number
+          it uses to believe that, on the Backtests screen.
+        </p>
+      </Panel>
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {STRATEGIES.map((s) => {
           const pnl = pnlOf(s.code);

@@ -29,9 +29,25 @@ import { defaultAllocations } from "@/lib/portfolio/sleeves";
 import { clearLog, deleteKey } from "@/lib/store/kv";
 import { TRADE_LOG } from "@/lib/engine/pass";
 
-const ZAR_PER_ACCOUNT = 10_000;
-/** Share of each account's balance to put to work; the rest is the margin buffer. */
-const DEPLOY_SHARE = 0.66;
+/**
+ * The operator's seed: R30,000 total, split so both books can run their
+ * charter allocations — crypto carries Conservative-core plus the Aggressive
+ * trend sleeve, forex carries FX carry plus the Experimental revalidation.
+ */
+const ZAR_SPLIT = { crypto: 19_000, forex: 11_000 } as const;
+
+/**
+ * Charter spread (GOVERNANCE.md), as shares of each account's seeded balance.
+ * The remainder in each account is the margin buffer. Every funded sleeve
+ * stays under its portfolio's cap: Conservative ≈63% of NAV (cap 85%),
+ * Aggressive ≈19% (cap 25%), Experimental ≈9% (cap 10%).
+ */
+const SPREAD = {
+  core: { account: "crypto", share: 0.62 },
+  systematic: { account: "crypto", share: 0.31 },
+  "fx-carry": { account: "forex", share: 0.66 },
+  "fx-trend": { account: "forex", share: 0.24 },
+} as const;
 
 async function main() {
   const commit = process.argv.includes("--commit");
@@ -42,17 +58,18 @@ async function main() {
 
   const rates = await getRateTable();
   const usdPerZar = usdPerUnit(rates, "ZAR");
-  const usdPerAccount = ZAR_PER_ACCOUNT * usdPerZar;
   const zarPerUsd = usdPerZar > 0 ? 1 / usdPerZar : 0;
+  const usdBy = {
+    crypto: ZAR_SPLIT.crypto * usdPerZar,
+    forex: ZAR_SPLIT.forex * usdPerZar,
+  };
 
   console.log(`Rate:          ${rates.source} · 1 USD = R${zarPerUsd.toFixed(4)}`);
-  console.log(`Per account:   R${ZAR_PER_ACCOUNT.toLocaleString()} → $${usdPerAccount.toFixed(2)}`);
-  console.log(`Total seed:    $${(usdPerAccount * 2).toFixed(2)}`);
-
-  const deployPerAccount = usdPerAccount * DEPLOY_SHARE;
-  console.log(
-    `Allocate:      core $${deployPerAccount.toFixed(0)} (crypto) · fx-carry $${deployPerAccount.toFixed(0)} (forex)`,
-  );
+  console.log(`Seed:          crypto R${ZAR_SPLIT.crypto.toLocaleString()} → $${usdBy.crypto.toFixed(2)} · forex R${ZAR_SPLIT.forex.toLocaleString()} → $${usdBy.forex.toFixed(2)}`);
+  console.log(`Total:         R${(ZAR_SPLIT.crypto + ZAR_SPLIT.forex).toLocaleString()} → $${(usdBy.crypto + usdBy.forex).toFixed(2)}`);
+  for (const [sleeve, def] of Object.entries(SPREAD)) {
+    console.log(`Allocate:      ${sleeve} $${(usdBy[def.account] * def.share).toFixed(0)} (${def.account})`);
+  }
 
   if (!commit) {
     console.log("\nDry run. Re-run with --commit.");
@@ -64,6 +81,9 @@ async function main() {
     resetLedger(),
     resetPaperBook(),
     deleteKey("fx_carry_last_accrual"),
+    // High-water marks belong to the OLD equity; keeping them would read the
+    // reset itself as a catastrophic drawdown and halt everything at once.
+    deleteKey("risk_state"),
     clearLog(TRADE_LOG),
   ]);
 
@@ -71,11 +91,11 @@ async function main() {
     const r = await recordCapitalEvent({
       account,
       type: "deposit",
-      amount: ZAR_PER_ACCOUNT,
+      amount: ZAR_SPLIT[account],
       currency: "ZAR",
       usdPerUnit: usdPerZar,
       nature: "simulated",
-      note: `Fresh start — R${ZAR_PER_ACCOUNT.toLocaleString()} at ${rates.asOf}`,
+      note: `Fresh start — R${ZAR_SPLIT[account].toLocaleString()} at ${rates.asOf}`,
     });
     if (!r.ok) {
       console.error(`  ${account}: FAILED — ${r.error}`);
@@ -85,17 +105,18 @@ async function main() {
     console.log(`  ${account}: +$${r.event.amountUsd.toFixed(2)} · balance $${r.nav.navUsd.toFixed(2)}`);
   }
 
-  // Allocate only the two sleeves that run a live strategy — core (crypto carry,
-  // L1/L2) and fx-carry (forex F1). The other sleeves have no scanner yet, so
-  // funding them would idle capital.
+  // The charter spread: every portfolio funded, every cap respected.
   const fund = await getFundState();
   const config = await readConfig();
   const sleeves = defaultAllocations().map((a) => {
-    if (a.sleeveId === "core") return { ...a, allocatedUsd: deployPerAccount, enabled: true };
-    if (a.sleeveId === "fx-carry") return { ...a, allocatedUsd: deployPerAccount, enabled: true };
-    return { ...a, allocatedUsd: 0, enabled: false };
+    const def = SPREAD[a.sleeveId as keyof typeof SPREAD];
+    if (!def) return { ...a, allocatedUsd: 0, enabled: false };
+    return { ...a, allocatedUsd: Math.round(usdBy[def.account] * def.share), enabled: true };
   });
-  await writeConfig({ ...config, navUsd: fund.navUsd, sleeves });
+  await writeConfig(
+    { ...config, navUsd: fund.navUsd, sleeves },
+    "Fresh start: R30,000 operator seed spread per the charter — Conservative (core + fx-carry), Aggressive (systematic H1), Experimental (fx-trend live revalidation, tuition capped)",
+  );
 
   const after = await readCapitalEvents();
   console.log(`\nDone. NAV $${fund.navUsd.toFixed(2)} · ${after.length} capital events · sleeves allocated.`);
