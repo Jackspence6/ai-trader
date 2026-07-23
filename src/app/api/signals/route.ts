@@ -7,7 +7,8 @@
  * you debug why the system isn't trading (DESIGN.md §8.2).
  */
 
-import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
+import { fetchSnapshot, fetchBinanceFundingHistory, fetchCandles, type Candle } from "@/lib/market/venues";
+import { scanCryptoTrend } from "@/lib/engine/trendscan";
 import { UNIVERSE } from "@/lib/market/types";
 import { scan } from "@/lib/engine/scanner";
 import {
@@ -17,7 +18,7 @@ import {
   type FundingSample,
 } from "@/lib/ml/persistence";
 import { readConfig } from "@/lib/engine/store";
-import { PROMOTION_HOLD_DAYS, TIERS, tierForNav } from "@/lib/calc/tiers";
+import { PROMOTION_HOLD_DAYS, TIERS, resolveTier, tierForNav } from "@/lib/calc/tiers";
 import { daysHeldAbove } from "@/lib/db/nav";
 import { readHalt } from "@/lib/killswitch";
 import { getNavUsd } from "@/lib/fund/nav";
@@ -81,6 +82,19 @@ export async function GET() {
     daysHeldAboveThreshold = 0;
   }
 
+  const candleSettled = await Promise.allSettled(
+    UNIVERSE.map(async (a) => [a, await fetchCandles(a, "1d", 150)] as const),
+  );
+  const candles: Record<string, Candle[]> = {};
+  for (const c of candleSettled) {
+    if (c.status === "fulfilled") candles[c.value[0]] = c.value[1];
+  }
+
+  const tier = resolveTier(config.navUsd, daysHeldAboveThreshold, "T0").current;
+  const h1 = scanCryptoTrend({
+    config, candles, tier, dataAgeSeconds: 0, halted: haltState.halted,
+  });
+
   const opportunities = scan({
     config,
     snapshot,
@@ -88,7 +102,7 @@ export async function GET() {
     daysHeldAboveThreshold,
     halted: haltState.halted,
     persistence,
-  });
+  }).concat(h1);
 
   return Response.json(
     {

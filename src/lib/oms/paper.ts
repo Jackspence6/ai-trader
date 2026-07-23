@@ -114,6 +114,12 @@ function planLegs(
     ];
   }
 
+  if (opp.strategy === "H1") {
+    // "Binance BTC breakout" — long-only spot, one leg.
+    const venue = opp.route.split(" ")[0];
+    return [{ venue, market: "spot", side: "buy" }];
+  }
+
   if (opp.strategy === "L3") {
     // "Binance USDC repeg" — buy the discounted stable, one spot leg.
     const venue = opp.route.split(" ")[0];

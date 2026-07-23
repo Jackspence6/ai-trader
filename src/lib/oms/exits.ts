@@ -97,6 +97,11 @@ export type ExitContext = {
   /** Volatility-stop distance per FX pair, as a fraction of notional. */
   fxTrendStop?: (symbol: string) => number | undefined;
   /**
+   * H1 crypto trend: true when the asset has closed below its exit band —
+   * the classic Donchian exit the position was entered under.
+   */
+  cryptoTrendExit?: (asset: string) => boolean | undefined;
+  /**
    * Current below-par discount for a stable asset (L3), as a fraction.
    * Returning a value marks the asset AS a stable; ≤ the exit threshold means
    * the peg has restored and the trade is complete.
@@ -202,6 +207,15 @@ export function evaluateExits(marked: MarkedPosition[], ctx: ExitContext): ExitP
         if (netCarry < EXIT_FX_CARRY_APR) plans.push(plan("fx_carry_decayed"));
       }
       continue;
+    }
+
+    // --- crypto trend (H1): long spot, exit on the Donchian band ------------
+    if (sleeveId === "systematic") {
+      const long = legs.find((l) => l.qty > 0 && l.market === "spot");
+      if (long && ctx.cryptoTrendExit?.(asset) === true) {
+        plans.push(plan("trend_flipped"));
+      }
+      continue; // the generic stop backstop above still applies first
     }
 
     // --- stablecoin peg (L3): a long spot stable, sold when par returns -----

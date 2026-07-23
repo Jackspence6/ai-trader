@@ -32,7 +32,7 @@ import type { SleeveContext } from "@/lib/calc/gate";
 import type { MarketSnapshot, Quote } from "@/lib/market/types";
 import type { EngineConfig } from "./config";
 
-export type StrategyCode = "L1" | "L2" | "L3" | "F1" | "F2";
+export type StrategyCode = "L1" | "L2" | "L3" | "F1" | "F2" | "H1";
 
 export type ScoredOpportunity = {
   id: string;
@@ -107,6 +107,7 @@ export type ScoredOpportunity = {
 };
 
 const STRATEGY_NAMES: Record<StrategyCode, string> = {
+  H1: "Crypto trend",
   L1: "Funding carry",
   L2: "Cross-venue funding spread",
   L3: "Stablecoin peg",

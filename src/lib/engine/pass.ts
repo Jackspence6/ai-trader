@@ -12,7 +12,7 @@
  * decisions can, and only if they were kept.
  */
 
-import { fetchSnapshot, fetchBinanceFundingHistory } from "@/lib/market/venues";
+import { fetchSnapshot, fetchBinanceFundingHistory, fetchCandles, type Candle } from "@/lib/market/venues";
 import { FX_PAIRS, fetchFxHistory, fetchFxQuotes } from "@/lib/market/forex";
 import { evaluateFxTrend, trendStopFraction } from "@/lib/calc/fxsignal";
 import { fxBooks, fxPrices } from "@/lib/market/fxbook";
@@ -21,6 +21,7 @@ import { resolveTier, tierForNav } from "@/lib/calc/tiers";
 import { scan } from "@/lib/engine/scanner";
 import { scanForex, scanForexTrend } from "@/lib/engine/forexscan";
 import { scanStablePeg } from "@/lib/engine/pegscan";
+import { cryptoTrendState, scanCryptoTrend } from "@/lib/engine/trendscan";
 import { fetchStableQuotes, pegDiscount } from "@/lib/market/stables";
 import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
@@ -136,6 +137,7 @@ async function processExits(
   fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
   fxCloses: Record<string, number[]>,
   stableDiscounts: Map<string, number>,
+  cryptoTrendExit?: (asset: string) => boolean | undefined,
 ): Promise<{ fills: Fill[]; orders: Order[]; reasons: Record<string, number> }> {
   const marked = markPositions(buildPositions(fills, funding), prices);
 
@@ -146,6 +148,7 @@ async function processExits(
     fundingMedianApr,
     fxPair: (s) => fxPairs.get(s),
     stableDiscount: (a) => stableDiscounts.get(a),
+    cryptoTrendExit,
     fxTrend: (s) =>
       fxCloses[s] ? evaluateFxTrend(s, fxCloses[s]).direction : undefined,
     fxTrendStop: (s) => {
@@ -419,6 +422,15 @@ export async function runTradingPass(): Promise<PassOutcome> {
 
   // Daily closes per FX pair, for the trend signal and its exits. A pair whose
   // history fetch fails simply produces no trend opportunity this pass.
+  // Daily candles for the H1 trend scan and its Donchian exit.
+  const candleSettled = await Promise.allSettled(
+    UNIVERSE.map(async (a) => [a, await fetchCandles(a, "1d", 150)] as const),
+  );
+  const candles: Record<string, Candle[]> = {};
+  for (const c of candleSettled) {
+    if (c.status === "fulfilled") candles[c.value[0]] = c.value[1];
+  }
+
   const fxHistories = await Promise.allSettled(
     FX_PAIRS.map(async (p) => {
       const h = await fetchFxHistory(p.symbol, 120);
@@ -439,6 +451,7 @@ export async function runTradingPass(): Promise<PassOutcome> {
     ...scanForexTrend({
       config, quotes: fxQuotes, tier, dataAgeSeconds, halted: false, closes: fxCloses,
     }),
+    ...scanCryptoTrend({ config, candles, tier, dataAgeSeconds, halted: false }),
   ];
 
   const venue = new SimulatedVenue();
@@ -449,9 +462,13 @@ export async function runTradingPass(): Promise<PassOutcome> {
   // entries are considered, so the freed position slot and capital are
   // available to the same pass rather than a later one.
   const stableDiscounts = new Map(stableQuotes.map((q) => [q.asset, pegDiscount(q.ask)]));
+  const cryptoTrendExit = (asset: string) => {
+    const st = candles[asset] ? cryptoTrendState(candles[asset]) : null;
+    return st ? st.bandExit : undefined;
+  };
   const exit = await processExits(
     venue, existingFills, fundingBefore, prices, fundingApr, fundingMedianApr,
-    fxQuotes, fxCloses, stableDiscounts,
+    fxQuotes, fxCloses, stableDiscounts, cryptoTrendExit,
   );
   if (exit.orders.length > 0) await recordOrders(exit.orders);
 

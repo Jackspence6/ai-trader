@@ -410,6 +410,25 @@ classifier (~$1/mo), paid data feeds (not before live edge is proven),
 maker-tier volume / Tokyo VPS ($5–12/mo), exchange accounts for live
 micro-positions (free, needs sign-up — ask when ready).
 
+### H1 crypto trend: the book's first directional stream (2026-07-23)
+
+The all-carry portfolio had zero exposure to the one thing crypto reliably
+does that FX does not — trend hard. `backtest/cryptotrend.ts` (Donchian
+breakout, ATR trailing stop, long-only spot, live cost model) over ~2.7
+years of real candles: **positive in every tested parameter cell**
+(portfolio +38–47%), the opposite of F2's all-negative grid — including on
+assets where buy-and-hold LOST (LINK +76% vs −21%, DOGE +71–100% vs +5%).
+Honest framing: it underperformed pure holding in this bull window; its
+value is disciplined directional exposure with mechanical exits,
+complementary to the carry book.
+
+Execution shipped: `engine/trendscan.ts` (100/30 Donchian, ATR×4 stop, the
+slowest tested cell — chosen for fewest round trips, justified by the whole
+grid being positive rather than one cell winning), long-only spot through
+the same trend gate as F2, Donchian band exit + stop backstop. Systematic
+sleeve funded $1,500 (core 5000 / fx-carry 3000). No breakout is active
+today; the scanner waits — which is the strategy working, not idling.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the
