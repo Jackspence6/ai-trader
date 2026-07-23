@@ -41,6 +41,21 @@ import type { MarkedPosition } from "@/lib/portfolio/positions";
 
 /** Close a funding carry once funding is no longer positive (was entered rich). */
 export const EXIT_FUNDING_APR = 0;
+/**
+ * Close a cross-venue spread only once it is paying more than this, annualised.
+ *
+ * Exiting at exactly zero was measurable live churn: funding spreads wobble
+ * across zero print-to-print, and each wobble bought a full round trip. The
+ * arithmetic says sit through a shallow inversion — a 2% annualised negative
+ * spread costs ~11bp of notional over a 21-day hold, while the round trip to
+ * exit and re-enter costs ~25bp immediately. So the exit waits until the
+ * spread is genuinely against us, not merely noisy.
+ *
+ * This is the same lesson as the L1 median confirmation below, applied to the
+ * strategy that carries the widest edges — and the one the backtest says to
+ * lean on.
+ */
+export const EXIT_SPREAD_APR = -0.02;
 /** Close an FX carry once its net-of-swap carry turns negative. */
 export const EXIT_FX_CARRY_APR = 0;
 /** Backstop: close any trade down more than this share of its entry notional. */
@@ -220,14 +235,24 @@ export function evaluateExits(marked: MarkedPosition[], ctx: ExitContext): ExitP
 
     if (perps.length >= 2) {
       // Cross-venue funding spread (L2): short the rich venue, long the cheap
-      // one. Net funding is the spread; exit when it inverts.
+      // one. Net funding is the spread; exit once it is meaningfully inverted
+      // — past the deadband, and confirmed by the regime where both venues
+      // have history. A spread merely grazing zero is noise we hold through.
       const short = perps.find((l) => l.qty < 0);
       const long = perps.find((l) => l.qty > 0);
       if (short && long) {
         const fShort = ctx.fundingApr(String(short.venue), short.asset);
         const fLong = ctx.fundingApr(String(long.venue), long.asset);
-        if (fShort !== undefined && fLong !== undefined && fShort - fLong < EXIT_FUNDING_APR) {
-          plans.push(plan("spread_inverted"));
+        if (fShort !== undefined && fLong !== undefined && fShort - fLong < EXIT_SPREAD_APR) {
+          const mShort = ctx.fundingMedianApr?.(String(short.venue), short.asset);
+          const mLong = ctx.fundingMedianApr?.(String(long.venue), long.asset);
+          // Only one venue publishes history today, so this usually falls
+          // back to the deadband alone — which is the conservative direction.
+          const medianSpread =
+            mShort !== undefined && mLong !== undefined ? mShort - mLong : undefined;
+          if (medianSpread === undefined || medianSpread < EXIT_FUNDING_APR) {
+            plans.push(plan("spread_inverted"));
+          }
         }
       }
     }

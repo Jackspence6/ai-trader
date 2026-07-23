@@ -109,10 +109,40 @@ describe("exit manager — cross-venue spread (L2)", () => {
     expect(plans).toHaveLength(0);
   });
 
-  it("closes when the spread inverts", () => {
+  it("closes when the spread inverts past the deadband", () => {
     const plans = evaluateExits(spread(), {
       ...NO_FX,
-      fundingApr: (v) => (v === "Bybit" ? 0.02 : 0.15), // now upside-down
+      // Short Bybit pays 2%, long OKX receives 15% → spread −13%, well past it.
+      fundingApr: (v) => (v === "Bybit" ? 0.02 : 0.15),
+    });
+    expect(plans[0].reason).toBe("spread_inverted");
+  });
+
+  it("HOLDS through a shallow inversion — noise is cheaper than a round trip", () => {
+    // Spread of −1% annualised costs ~6bp over a 21-day hold; the round trip
+    // to exit and re-enter costs ~25bp. Sitting through it is the cheap side.
+    const plans = evaluateExits(spread(), {
+      ...NO_FX,
+      fundingApr: (v) => (v === "Bybit" ? 0.05 : 0.06),
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("holds when the print inverts but the regime median has not", () => {
+    const plans = evaluateExits(spread(), {
+      ...NO_FX,
+      fundingApr: (v) => (v === "Bybit" ? 0.02 : 0.15),
+      // Median still favours the short venue — the print is a spike.
+      fundingMedianApr: (v) => (v === "Bybit" ? 0.18 : 0.04),
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("closes when both the print and the median spread are inverted", () => {
+    const plans = evaluateExits(spread(), {
+      ...NO_FX,
+      fundingApr: (v) => (v === "Bybit" ? 0.02 : 0.15),
+      fundingMedianApr: (v) => (v === "Bybit" ? 0.03 : 0.14),
     });
     expect(plans[0].reason).toBe("spread_inverted");
   });
