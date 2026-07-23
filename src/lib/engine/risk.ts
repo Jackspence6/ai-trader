@@ -26,7 +26,11 @@
  * book starts at zero drawdown and cannot false-trip on its opening balance.
  */
 
+import { PORTFOLIOS } from "@/lib/portfolio/portfolios";
+
 export type RiskState = {
+  /** Portfolio high-water marks, by portfolio id (GOVERNANCE.md §1). */
+  portfolioHwmUsd?: Record<string, number>;
   /** Fund NAV high-water mark. */
   fundHwmUsd: number;
   /** UTC day the daily baseline belongs to, e.g. "2026-07-22". */
@@ -38,9 +42,9 @@ export type RiskState = {
 };
 
 export type RiskBreach = {
-  scope: "fund" | "sleeve";
+  scope: "fund" | "sleeve" | "portfolio";
   id?: string;
-  kind: "drawdown" | "daily_loss";
+  kind: "drawdown" | "daily_loss" | "charter_cap";
   /** The observed decline, as a fraction. */
   observed: number;
   /** The limit it exceeded, as a fraction. */
@@ -140,8 +144,38 @@ export function evaluateRisk(input: RiskInput): RiskEvaluation {
     }
   }
 
+  // --- portfolio layer: aggregate member sleeves, own HWM, own halt --------
+  // A portfolio breaching its charter drawdown halts its member sleeves ONLY
+  // (GOVERNANCE.md §1). Enforced with the same high-water pattern as the fund
+  // and sleeves — one machine, three altitudes.
+  const portfolioHwmUsd: Record<string, number> = { ...(prev?.portfolioHwmUsd ?? {}) };
+  for (const p of PORTFOLIOS) {
+    const members = sleeves.filter((s) => p.sleeves.includes(s.id));
+    if (members.length === 0) continue;
+    const equity = members.reduce((a, m) => a + m.equityUsd, 0);
+    const hwm = Math.max(portfolioHwmUsd[p.id] ?? equity, equity);
+    portfolioHwmUsd[p.id] = hwm;
+    const dd = hwm > 0 ? (hwm - equity) / hwm : 0;
+    if (dd > p.maxDrawdownPct) {
+      const b: RiskBreach = {
+        scope: "portfolio",
+        id: p.id,
+        kind: "drawdown",
+        observed: dd,
+        limit: p.maxDrawdownPct,
+        detail: `${p.name} portfolio drawdown ${pct(dd)} exceeds its ${pct(p.maxDrawdownPct)} charter limit`,
+      };
+      breaches.push(b);
+      for (const m of members) {
+        if (!m.alreadyHalted && !sleeveHalts.some((h) => h.id === m.id)) {
+          sleeveHalts.push({ id: m.id, name: m.name, breach: b });
+        }
+      }
+    }
+  }
+
   return {
-    state: { fundHwmUsd, dayKey, dayStartUsd, sleeveHwmUsd },
+    state: { fundHwmUsd, dayKey, dayStartUsd, sleeveHwmUsd, portfolioHwmUsd },
     fundBreach,
     sleeveHalts,
     breaches,

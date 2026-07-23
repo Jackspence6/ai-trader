@@ -839,10 +839,22 @@ type StreamsConfigResponse = {
 };
 
 /** The evidence verdict behind each funded stream — why the money sits there. */
-const STREAM_NOTES: Record<string, { name: string; verdict: string }> = {
-  core: { name: "Crypto carry · L1 + L3", verdict: "breakeven at taker, positive at maker" },
-  "fx-carry": { name: "FX carry · F1", verdict: "earns · +4.3%/3y validated" },
-  systematic: { name: "Crypto trend · H1", verdict: "positive in every tested cell" },
+const STREAM_NOTES: Record<string, { name: string; portfolio: string; verdict: string }> = {
+  core: {
+    name: "Crypto carry · L1 + L3",
+    portfolio: "Conservative",
+    verdict: "breakeven at taker, positive at maker",
+  },
+  "fx-carry": {
+    name: "FX carry · F1",
+    portfolio: "Conservative",
+    verdict: "earns · +4.3%/3y validated",
+  },
+  systematic: {
+    name: "Crypto trend · H1",
+    portfolio: "Aggressive",
+    verdict: "positive in every tested cell",
+  },
 };
 
 function StreamsPanel() {
@@ -866,6 +878,7 @@ function StreamsPanel() {
         <table className="w-full text-[12px]">
           <thead>
             <tr className="border-b border-line">
+              <th className="micro px-3 py-2 text-left font-normal text-dim">PORTFOLIO</th>
               <th className="micro px-3 py-2 text-left font-normal text-dim">STREAM</th>
               <th className="micro px-3 py-2 text-right font-normal text-dim">ALLOCATED</th>
               <th className="micro px-3 py-2 text-right font-normal text-dim">OPEN</th>
@@ -881,6 +894,9 @@ function StreamsPanel() {
               const total = pnl?.totalUsd ?? 0;
               return (
                 <tr key={s.sleeveId} className="border-b border-line/60 hover:bg-raised/40">
+                  <td className="px-3 py-2">
+                    <span className="micro text-accent">{note?.portfolio ?? "—"}</span>
+                  </td>
                   <td className="px-3 py-2 text-ink">{note?.name ?? s.sleeveId}</td>
                   <td className="tnum px-3 py-2 text-right text-muted">
                     ${s.allocatedUsd.toLocaleString("en-US")}
@@ -904,6 +920,9 @@ function StreamsPanel() {
           </tbody>
         </table>
         <p className="px-3 py-2.5 text-[11px] leading-relaxed text-dim">
+          Portfolios are governed independently (GOVERNANCE.md): Conservative ≤85%
+          of NAV with a 6% drawdown halt, Aggressive ≤25% with 15%, Experimental
+          ≤10% with 10% — a breach halts that portfolio&apos;s sleeves only.
           Defunded by evidence: L2 cross-venue spread (mean-reverts before paying
           its costs) · F2 FX trend (negative in all 12 parameter cells) · B1 DCA
           accumulation (lost money over the last 1,000 days). All still scored in

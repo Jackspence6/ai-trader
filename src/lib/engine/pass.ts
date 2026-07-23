@@ -51,6 +51,7 @@ import {
 import { classifyFundingRegime } from "@/lib/calc/funding";
 import { evaluateExits } from "@/lib/oms/exits";
 import { evaluateRisk, type RiskState, type RiskBreach } from "./risk";
+import { charterViolations } from "@/lib/portfolio/portfolios";
 import { writeConfig } from "./store";
 import { halt as haltTrading } from "@/lib/killswitch/state";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
@@ -398,6 +399,20 @@ export async function runTradingPass(): Promise<PassOutcome> {
     prev: riskPrev,
   });
   await writeJson(RISK_STATE_KEY, risk.state);
+
+  // Charter caps (GOVERNANCE.md §2): allocations beyond a portfolio's share
+  // of NAV are surfaced as breaches so the Risk screen shows them — the
+  // operator set the caps; the system's job is to make violations loud.
+  for (const v of charterViolations(config.sleeves, fund.navUsd)) {
+    risk.breaches.push({
+      scope: "portfolio",
+      id: v.portfolio,
+      kind: "charter_cap",
+      observed: v.allocatedUsd / Math.max(fund.navUsd, 1),
+      limit: v.capUsd / Math.max(fund.navUsd, 1),
+      detail: `${v.portfolio} allocated $${v.allocatedUsd.toFixed(0)} exceeds its charter cap $${v.capUsd.toFixed(0)}`,
+    });
+  }
 
   // Sleeve breach → halt that sleeve only. Persist it and apply to this pass so
   // its entries are blocked immediately.

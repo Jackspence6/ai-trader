@@ -99,3 +99,38 @@ describe("evaluateRisk — sleeve level (blast-radius isolation)", () => {
     expect(r.state.sleeveHwmUsd.new).toBe(500);
   });
 });
+
+describe("portfolio layer (GOVERNANCE.md)", () => {
+  it("halts ALL member sleeves when the portfolio breaches its charter drawdown", () => {
+    // Conservative = core + fx-carry, 6% limit. Each sleeve individually is
+    // within its own (wider) limit, but together they are down 8% from the
+    // portfolio high-water — the portfolio halts both, isolation intact.
+    const first = evaluateRisk({
+      navUsd: 10_000,
+      dayKey: "2026-07-23",
+      fund: { dailyLossPct: 0.5, maxDrawdownPct: 0.5 },
+      sleeves: [
+        { id: "core", name: "Core", equityUsd: 6_000, maxDrawdownPct: 0.5, alreadyHalted: false },
+        { id: "fx-carry", name: "FX Carry", equityUsd: 3_000, maxDrawdownPct: 0.5, alreadyHalted: false },
+        { id: "systematic", name: "Systematic", equityUsd: 1_000, maxDrawdownPct: 0.5, alreadyHalted: false },
+      ],
+      prev: null,
+    });
+    const second = evaluateRisk({
+      navUsd: 10_000,
+      dayKey: "2026-07-23",
+      fund: { dailyLossPct: 0.5, maxDrawdownPct: 0.5 },
+      sleeves: [
+        { id: "core", name: "Core", equityUsd: 5_500, maxDrawdownPct: 0.5, alreadyHalted: false },
+        { id: "fx-carry", name: "FX Carry", equityUsd: 2_780, maxDrawdownPct: 0.5, alreadyHalted: false },
+        { id: "systematic", name: "Systematic", equityUsd: 1_000, maxDrawdownPct: 0.5, alreadyHalted: false },
+      ],
+      prev: first.state,
+    });
+    const haltedIds = second.sleeveHalts.map((h) => h.id).sort();
+    expect(haltedIds).toEqual(["core", "fx-carry"]);
+    // The Aggressive portfolio (systematic) is untouched — isolation.
+    expect(haltedIds).not.toContain("systematic");
+    expect(second.breaches.some((b) => b.scope === "portfolio")).toBe(true);
+  });
+});
