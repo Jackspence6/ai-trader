@@ -36,6 +36,17 @@ type MlResponse = {
   error?: string;
 };
 
+type SpreadResult = {
+  periodDays: number;
+  costFraction: number;
+  pairs: { asset: string; venues: string; intervals: number; stats: Stats }[];
+  sweep: { exitSpreadApr: number; stats: Stats; trades: number }[];
+  bestExitSpreadApr: number | null;
+  liveExitSpreadApr: number;
+  caveats: string[];
+  error?: string;
+};
+
 type Stats = {
   totalReturnPct: number;
   annualisedReturnPct: number;
@@ -270,6 +281,7 @@ export default function ResearchPage() {
         </Panel>
       )}
 
+      <SpreadPanel />
       <MlPanel />
 
       {data && (
@@ -458,5 +470,161 @@ function MlPanel() {
         </>
       )}
     </Panel>
+  );
+}
+
+function SpreadPanel() {
+  // Pulls three venues and replays every pair, so it is slow and slow-polled.
+  const { data, status } = useLive<SpreadResult>("/api/backtest/spread", 600_000);
+
+  const best = data?.sweep?.reduce(
+    (b, s) => (b === null || s.stats.totalReturnPct > b.stats.totalReturnPct ? s : b),
+    null as SpreadResult["sweep"][number] | null,
+  );
+  // The honest verdict: profitable at ANY tested exit band, or not at all.
+  const anyProfitable = (best?.stats.totalReturnPct ?? 0) > 0;
+
+  return (
+    <Panel
+      label="CROSS-VENUE SPREAD BACKTEST"
+      hint="L2 · BINANCE ⇄ BYBIT ⇄ OKX · EXIT-BAND SWEEP"
+    >
+      {!data && (
+        <div className="text-[12px] text-dim">
+          {status === "error"
+            ? "Spread backtest unavailable"
+            : "Replaying three venues of real funding history…"}
+        </div>
+      )}
+      {data?.error && <div className="text-[12px] text-down">{data.error}</div>}
+      {data && !data.error && data.sweep.length > 0 && (
+        <>
+          <div
+            className={cx(
+              "mb-4 flex flex-wrap items-center gap-2 border px-3 py-2.5",
+              anyProfitable ? "border-up/30 bg-up/5" : "border-down/30 bg-down/5",
+            )}
+          >
+            <Tag tone={anyProfitable ? "up" : "down"}>
+              {anyProfitable ? "TRADEABLE" : "NOT TRADEABLE AT RETAIL COST"}
+            </Tag>
+            <span className="text-[12px] text-muted">
+              Over {data.periodDays.toFixed(0)} days across {data.pairs.length} venue
+              pairs, the cross-venue spread lost money at{" "}
+              <span className="tnum">every</span> exit band tested — best case{" "}
+              <span className={cx("tnum", anyProfitable ? "text-up" : "text-down")}>
+                {((best?.stats.totalReturnPct ?? 0) * 100).toFixed(2)}%
+              </span>{" "}
+              on notional. The spread mean-reverts within a day while a round trip
+              costs {(data.costFraction * 100).toFixed(2)}%, so the trade cannot
+              amortise its own entry. L2 is scored and shown, but no longer sized
+              on the 21-day carry hold that made it look profitable.
+            </span>
+          </div>
+
+          <Micro className="mb-2">EXIT-BAND SWEEP · WIDER BAND = FEWER ROUND TRIPS</Micro>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-line">
+                  <Th>EXIT BAND</Th>
+                  <Th right>RETURN</Th>
+                  <Th right>ANNUALISED</Th>
+                  <Th right>ROUND TRIPS</Th>
+                  <Th right>WIN</Th>
+                  <Th right>IN MKT</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sweep.map((s) => (
+                  <tr
+                    key={s.exitSpreadApr}
+                    className={cx(
+                      "border-b border-line/60",
+                      s.exitSpreadApr === data.liveExitSpreadApr && "bg-raised/30",
+                    )}
+                  >
+                    <Td>
+                      <span className="tnum text-ink">
+                        {(s.exitSpreadApr * 100).toFixed(1)}%
+                      </span>
+                      {s.exitSpreadApr === data.liveExitSpreadApr && (
+                        <span className="micro ml-2 text-accent">LIVE</span>
+                      )}
+                    </Td>
+                    <Td right>
+                      <span
+                        className={cx(
+                          "tnum",
+                          s.stats.totalReturnPct >= 0 ? "text-up" : "text-down",
+                        )}
+                      >
+                        {s.stats.totalReturnPct >= 0 ? "+" : ""}
+                        {(s.stats.totalReturnPct * 100).toFixed(2)}%
+                      </span>
+                    </Td>
+                    <Td right>
+                      <span
+                        className={cx(
+                          "tnum",
+                          s.stats.annualisedReturnPct >= 0 ? "text-up" : "text-down",
+                        )}
+                      >
+                        {(s.stats.annualisedReturnPct * 100).toFixed(1)}%
+                      </span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum text-muted">{s.trades}</span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum text-muted">
+                        {(s.stats.winRate * 100).toFixed(0)}%
+                      </span>
+                    </Td>
+                    <Td right>
+                      <span className="tnum text-dim">
+                        {(s.stats.timeInMarket * 100).toFixed(0)}%
+                      </span>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            Returns improve only as the band widens because a wider band trades
+            less — the sweep is measuring how much the churn costs, not finding a
+            profitable setting. {data.caveats.join(" ")}
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return (
+    <th
+      className={cx(
+        "micro whitespace-nowrap px-3 py-2 font-normal text-dim",
+        right ? "text-right" : "text-left",
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return (
+    <td
+      className={cx(
+        "whitespace-nowrap px-3 py-2 text-muted",
+        right ? "text-right" : "text-left",
+      )}
+    >
+      {children}
+    </td>
   );
 }

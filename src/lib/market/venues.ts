@@ -556,3 +556,81 @@ export async function fetchBinanceFundingHistory(
     apr: annualiseFunding(num(r.fundingRate), 8),
   }));
 }
+
+/**
+ * Historical funding rates from Bybit and OKX.
+ *
+ * The cross-venue spread (L2) is the strategy with the widest edges, and it
+ * could not be backtested at all while only Binance published history to us —
+ * a spread needs two series. Both endpoints are free, public, and quote on the
+ * same 8-hour schedule as Binance, so the three series align by timestamp.
+ *
+ * Both paginate backwards from newest and cap a page well below the sample a
+ * backtest wants, so both walk pages until they have enough or the venue stops
+ * returning rows. Results come back oldest-first to match Binance.
+ */
+
+/** Bybit: 200 rows per page, walked backwards with `endTime`. */
+export async function fetchBybitFundingHistory(
+  asset: string,
+  limit = 200,
+): Promise<{ t: number; rate: number; apr: number }[]> {
+  const out: { t: number; rate: number; apr: number }[] = [];
+  let endTime: number | undefined;
+
+  while (out.length < limit) {
+    const url =
+      `https://api.bybit.com/v5/market/funding/history?category=linear` +
+      `&symbol=${asset}USDT&limit=200${endTime ? `&endTime=${endTime}` : ""}`;
+    const res = await getJson<{
+      result: { list: { fundingRate: string; fundingRateTimestamp: string }[] };
+    }>(url);
+    const rows = res.result?.list ?? [];
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      const t = Number(r.fundingRateTimestamp);
+      const rate = num(r.fundingRate);
+      out.push({ t, rate, apr: annualiseFunding(rate, 8) });
+    }
+
+    // Step strictly before the oldest row so a page cannot repeat forever.
+    const oldest = Math.min(...rows.map((r) => Number(r.fundingRateTimestamp)));
+    if (!Number.isFinite(oldest)) break;
+    endTime = oldest - 1;
+  }
+
+  return out.sort((a, b) => a.t - b.t).slice(-limit);
+}
+
+/** OKX: 100 rows per page, walked backwards with `after`. */
+export async function fetchOKXFundingHistory(
+  asset: string,
+  limit = 200,
+): Promise<{ t: number; rate: number; apr: number }[]> {
+  const out: { t: number; rate: number; apr: number }[] = [];
+  let after: number | undefined;
+
+  while (out.length < limit) {
+    const url =
+      `https://www.okx.com/api/v5/public/funding-rate-history` +
+      `?instId=${asset}-USDT-SWAP&limit=100${after ? `&after=${after}` : ""}`;
+    const res = await getJson<{
+      data: { fundingRate: string; fundingTime: string }[];
+    }>(url);
+    const rows = res.data ?? [];
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      const t = Number(r.fundingTime);
+      const rate = num(r.fundingRate);
+      out.push({ t, rate, apr: annualiseFunding(rate, 8) });
+    }
+
+    const oldest = Math.min(...rows.map((r) => Number(r.fundingTime)));
+    if (!Number.isFinite(oldest)) break;
+    after = oldest;
+  }
+
+  return out.sort((a, b) => a.t - b.t).slice(-limit);
+}

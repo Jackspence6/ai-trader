@@ -302,6 +302,43 @@ carries its probability in SHADOW — recorded, displayed on Opportunities
 live evidence accrues, then let it confirm entries the way the median rule
 confirms exits. DESIGN.md principle 7 holds: the model never places orders.
 
+### L2 cross-venue spread: backtested for the first time, and it fails (2026-07-23)
+
+The strategy the roadmap said to "lean on" had never been backtested, because
+a spread needs two funding series and only Binance published history to us.
+Bybit and OKX history fetchers (`market/venues.ts`, paginated, free) plus
+`backtest/spread.ts` close that gap. One alignment subtlety was doing real
+damage: **Binance stamps funding times with millisecond jitter** while the
+others are exact, so an exact-timestamp join silently drops half the rows.
+Both sides now bucket to the 8h boundary.
+
+**The finding: L2 is not tradeable at retail taker cost.** Over 167 days and
+24 venue pairs, every exit band tested loses money — 921 round trips at a 0%
+win rate on the naive band. The sweep improves monotonically as the band
+widens only because a wider band trades *less*; it is measuring the cost of
+churn, not finding a profitable setting.
+
+**Root cause — a structural mispricing, not a tuning problem.** Cross-venue
+spreads have no persistence: autocorrelation decays to 0.02 within three days
+and to zero within seven. Entries taken at ≥7.3% APR realise a forward mean of
+0.47% APR, and holds average 1.15 days. The scanner nonetheless scored L2 over
+`expectedHoldDays` (21 days, the *carry* hold), overstating expected income by
+~18×: an 11% spread booked ~57bp against ~27bp of real cost and looked like a
+30bp edge, when it could only ever earn a few bp before mean-reverting. Every
+L2 trade was structurally guaranteed to lose ~24bp — which is exactly what the
+live book did, seven times overnight, for ~$14.80 against $1.57 of funding
+earned.
+
+**Fix:** `L2_SPREAD_HOLD_DAYS = 2` — each strategy scored over the horizon its
+signal actually survives, the same pattern already used for FX carry's 90-day
+hold. Verified live: L2 now scores −13.8 to −30.4bp and is rejected, while
+staying visible with its reason; L1 is unaffected at +26.3bp. The gate is
+honest rather than closed — a spread wide enough to pay for itself in two days
+would still trade. Surfaced on Backtests so the finding is reproducible.
+
+This is the second time the same lesson has paid: an edge that only exists
+because a hold assumption is generous is not an edge.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the

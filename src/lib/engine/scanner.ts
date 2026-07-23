@@ -116,6 +116,31 @@ const STRATEGY_NAMES: Record<StrategyCode, string> = {
 
 export { STRATEGY_NAMES };
 
+/**
+ * The horizon a cross-venue funding spread (L2) is scored over.
+ *
+ * NOT the engine-wide `expectedHoldDays`, and the difference is the whole
+ * point. That figure (21 days) describes single-venue funding carry, whose
+ * regime genuinely persists for weeks. A cross-venue spread does not: measured
+ * on real Binance/Bybit/OKX history, its autocorrelation decays to 0.02 within
+ * three days and to zero within seven, entries taken at ≥7.3% APR realise a
+ * forward mean of 0.47% APR, and actual holds average 1.15 days.
+ *
+ * Scoring it over 21 days therefore overstated expected income by ~18×: an
+ * 11% spread booked ~57bp of income against ~27bp of real round-trip cost and
+ * looked like a 30bp edge, when the trade could only ever earn a few bp before
+ * the spread mean-reverted. The backtest is unambiguous — every venue pair,
+ * every exit rule, 1,035 trades, a 0% win rate — and the live book reproduced
+ * it exactly, churning seven losing round trips overnight.
+ *
+ * Two days is the measured hold rounded up, which gives the strategy the
+ * benefit of the doubt. At retail taker cost almost nothing clears the gate on
+ * that horizon, and that is the honest answer rather than a number tuned until
+ * the strategy looks tradeable: L2 stays scored and visible, and takes a trade
+ * only if a spread ever appears wide enough to pay for itself in two days.
+ */
+export const L2_SPREAD_HOLD_DAYS = 2;
+
 /** Group quotes by asset, then by venue and market kind. */
 function index(quotes: Quote[]) {
   const byAsset = new Map<string, Quote[]>();
@@ -417,7 +442,7 @@ function scanFundingSpread(
     legNotionalUsd: notionalUsd,
     perpLeverage: config.perpLeverage,
     cost,
-    expectedHoldDays: config.expectedHoldDays,
+    expectedHoldDays: L2_SPREAD_HOLD_DAYS,
   });
 
   const minNotional = bindingMinNotional(
@@ -429,7 +454,7 @@ function scanFundingSpread(
   );
   const dragBps = minNotionalDragBps(notionalUsd, minNotional, cost.totalBps);
 
-  const grossBps = ((r.spreadApr * config.expectedHoldDays) / 365) * 10_000;
+  const grossBps = ((r.spreadApr * L2_SPREAD_HOLD_DAYS) / 365) * 10_000;
 
   const decision = evaluateGate({
     strategyCode: "L2",
@@ -443,7 +468,7 @@ function scanFundingSpread(
     venueMinNotionalUsd: minNotional,
     minNotionalDragBps: dragBps,
     breakevenDays: r.breakevenDays,
-    expectedHoldDays: config.expectedHoldDays,
+    expectedHoldDays: L2_SPREAD_HOLD_DAYS,
     navUsd: config.navUsd,
     freeBalanceUsd: config.navUsd,
     capitalRequiredUsd: r.capitalRequiredUsd,
