@@ -144,6 +144,30 @@ realised entry cost error is 0.0bp on both strategies.
 
 ---
 
+### The backtests run themselves: automated re-validation (2026-07-23, later)
+
+The evidence pipeline had one human dependency left: somebody had to open
+the Research page. Now the trading loop re-runs every strategy through its
+own backtest every 12 hours — same signal code, same cost model, fresh
+history — and grades each into HEALTHY / WATCH / FAILING with explainable
+reasons, a delta against the previous check, and a durable verdict log
+(`research_verdicts`). Alerts ring only when capital is genuinely at
+stake: open positions in a failing strategy, or a sleeve dedicated to one.
+L2 failing while idle inside core is the designed state and stays quiet.
+Verdicts are advisory — capital still moves only through the Portfolios
+page with a written reason.
+
+H1 got a real runner at last (`/api/backtest/cryptotrend` — it had been
+validated by a one-off script), and re-validates at **+17.2%/yr over
+1,000 days, 28 trades, 61% wins** — stronger confirmation than the window
+that funded it.
+
+The carry net also widened: NZDUSD, USDSEK, USDMXN joined the FX universe
+behind deliberately punitive spread tolls. The backtest answered
+immediately and honestly — MXN's carry does not clear its 12bp toll,
+USDJPY remains the earner — and the live scan now scores 61 candidates a
+pass (was 55) with the gate still choosing on evidence.
+
 ## 2. Still to do
 
 Ordered by dependency. Nothing later works without the things above it.
