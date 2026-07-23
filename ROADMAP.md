@@ -339,6 +339,38 @@ would still trade. Surfaced on Backtests so the finding is reproducible.
 This is the second time the same lesson has paid: an edge that only exists
 because a hold assumption is generous is not an edge.
 
+### The FX book, backtested: F2 fails, F1 earns — allocations follow (2026-07-23)
+
+The same gap that let L2 run as a structural loser applied to both FX
+strategies: live capital, zero backtest. `backtest/fx.ts` replays three years
+of ECB daily fixes through the LIVE signal code — `evaluateFxTrend` and
+`trendStopFraction` on each day's prefix, live cost model, carry accrued at
+current policy differentials minus the swap markup.
+
+**F2 trend: not tradeable.** Portfolio −7.4% over ~3 years, 31% win rate,
+Sharpe −0.51 — and the parameter grid (4 MA pairs × 3 strength floors) is
+negative in **all twelve cells**, so this is the strategy failing, not a
+parameter choice. It is also structurally short-carry (−2.1% carry drag);
+its only winners are the high-carry pairs where pure carry earned several
+times more (F2 USDJPY +6.1% vs F1 USDJPY +22.1%). The trend overlay
+subtracts value from the carry it rides on.
+
+**F1 carry: earns.** +4.3% portfolio (Sharpe 0.62, max DD 3.6%, zero stops in
+three years), with both components positive — carry +1.7% AND price +2.7%.
+Honest caveats: only 3 of 7 pairs clear the net-carry floor (concentrated,
+not diversified, mostly JPY), the price component is regime luck rather than
+promise, and carry uses current policy rates.
+
+**Action taken:** fx-trend defunded and disabled ($1,000 → fx-carry, now
+$3,500); its two open positions stay managed by the flip/stop exits until
+they close. F2 stays *scored* on the feed — the signal keeps accruing a
+shadow record at zero cost, the same deal L2 got. Both backtests live on the
+Backtests screen (F2 sensitivity grid, F1 carry-vs-price decomposition).
+
+The book's evidence hierarchy after three backtests: **F1 carry (earns) >
+L1 crypto carry (breakeven at taker, positive at maker) > F2 trend and L2
+spread (structurally negative)**. Capital now sits in that order.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the

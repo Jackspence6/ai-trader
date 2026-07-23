@@ -36,6 +36,26 @@ type MlResponse = {
   error?: string;
 };
 
+type FxResult = {
+  periodDays: number;
+  trend: {
+    portfolio: Stats;
+    priceReturn: number;
+    carryReturn: number;
+    pairs: { symbol: string; stats: Stats; extra: { priceReturn: number; carryReturn: number; exits: { flip: number; stop: number } } }[];
+    sensitivity: { fast: number; slow: number; minStrengthPct: number; totalReturnPct: number; trades: number }[];
+    liveParams: { fast: number; slow: number; minStrengthPct: number };
+  };
+  carry: {
+    portfolio: Stats;
+    priceReturn: number;
+    carryReturn: number;
+    pairs: { symbol: string; stats: Stats; extra: { direction: number; netCarryApr: number; priceReturn: number; carryReturn: number; stops: number } }[];
+  };
+  caveats: string[];
+  error?: string;
+};
+
 type SpreadResult = {
   periodDays: number;
   costFraction: number;
@@ -282,6 +302,7 @@ export default function ResearchPage() {
       )}
 
       <SpreadPanel />
+      <FxPanel />
       <MlPanel />
 
       {data && (
@@ -626,5 +647,172 @@ function Td({ children, right }: { children: React.ReactNode; right?: boolean })
     >
       {children}
     </td>
+  );
+}
+
+function FxPanel() {
+  // Three years of daily fixes across seven pairs — slow, slow-polled.
+  const { data, status } = useLive<FxResult>("/api/backtest/fx", 600_000);
+
+  const pct = (x: number, dp = 2) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(dp)}%`;
+
+  return (
+    <Panel
+      label="FX BOOK BACKTEST"
+      hint="F1 CARRY + F2 TREND · 3Y OF ECB DAILY FIXES · LIVE SIGNAL CODE"
+    >
+      {!data && (
+        <div className="text-[12px] text-dim">
+          {status === "error"
+            ? "FX backtest unavailable"
+            : "Replaying three years of FX history through the live signals…"}
+        </div>
+      )}
+      {data?.error && <div className="text-[12px] text-down">{data.error}</div>}
+      {data && !data.error && (
+        <>
+          {/* F2 verdict */}
+          <div className="mb-3 flex flex-wrap items-center gap-2 border border-down/30 bg-down/5 px-3 py-2.5">
+            <Tag tone="down">F2 TREND · NOT TRADEABLE</Tag>
+            <span className="text-[12px] text-muted">
+              Dual-MA trend following lost{" "}
+              <span className="tnum text-down">{pct(data.trend.portfolio.totalReturnPct)}</span>{" "}
+              over ~{data.periodDays} days with a {(data.trend.portfolio.winRate * 100).toFixed(0)}%
+              win rate — and every cell of the parameter grid below is negative, so this is
+              the strategy failing, not a parameter choice. It is also structurally
+              short-carry ({pct(data.trend.carryReturn)} carry drag): its winners are the
+              high-carry pairs where pure carry earned several times more.
+            </span>
+          </div>
+
+          {/* F1 verdict */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 border border-up/30 bg-up/5 px-3 py-2.5">
+            <Tag tone="up">F1 CARRY · EARNS</Tag>
+            <span className="text-[12px] text-muted">
+              Holding the differential-earning direction returned{" "}
+              <span className="tnum text-up">{pct(data.carry.portfolio.totalReturnPct)}</span>{" "}
+              (Sharpe {data.carry.portfolio.sharpe?.toFixed(2) ?? "—"}, max drawdown{" "}
+              {(data.carry.portfolio.maxDrawdownPct * 100).toFixed(1)}%), with BOTH components
+              positive: carry {pct(data.carry.carryReturn)} and price {pct(data.carry.priceReturn)}.
+              Only {data.carry.pairs.filter((p) => p.extra.direction !== 0).length} of{" "}
+              {data.carry.pairs.length} pairs clear the net-carry floor — the book is
+              concentrated, not diversified.
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+              <Micro className="mb-2">
+                F2 SENSITIVITY · PORTFOLIO RETURN BY MA PAIR × STRENGTH FLOOR
+              </Micro>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <Th>FAST/SLOW</Th>
+                      <Th right>0.2%</Th>
+                      <Th right>0.3%</Th>
+                      <Th right>0.5%</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[10, 20, 30, 40].map((fast) => {
+                      const row = data.trend.sensitivity.filter((c) => c.fast === fast);
+                      if (row.length === 0) return null;
+                      const live = data.trend.liveParams;
+                      return (
+                        <tr key={fast} className="border-b border-line/60">
+                          <Td>
+                            <span className="tnum text-ink">
+                              {fast}/{row[0].slow}
+                            </span>
+                            {fast === live.fast && (
+                              <span className="micro ml-2 text-accent">LIVE</span>
+                            )}
+                          </Td>
+                          {row.map((c) => (
+                            <Td key={c.minStrengthPct} right>
+                              <span
+                                className={cx(
+                                  "tnum",
+                                  c.totalReturnPct >= 0 ? "text-up" : "text-down",
+                                )}
+                              >
+                                {pct(c.totalReturnPct)}
+                              </span>
+                            </Td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <Micro className="mb-2">F1 BY PAIR · CARRY VS PRICE DECOMPOSITION</Micro>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <Th>PAIR</Th>
+                      <Th right>TOTAL</Th>
+                      <Th right>CARRY</Th>
+                      <Th right>PRICE</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.carry.pairs
+                      .filter((p) => p.extra.direction !== 0)
+                      .map((p) => (
+                        <tr key={p.symbol} className="border-b border-line/60">
+                          <Td>
+                            <span className="text-ink">{p.symbol}</span>
+                            <span className="micro ml-2 text-dim">
+                              {p.extra.direction === 1 ? "LONG" : "SHORT"}
+                            </span>
+                          </Td>
+                          <Td right>
+                            <span
+                              className={cx(
+                                "tnum",
+                                p.stats.totalReturnPct >= 0 ? "text-up" : "text-down",
+                              )}
+                            >
+                              {pct(p.stats.totalReturnPct)}
+                            </span>
+                          </Td>
+                          <Td right>
+                            <span className="tnum text-up">{pct(p.extra.carryReturn)}</span>
+                          </Td>
+                          <Td right>
+                            <span
+                              className={cx(
+                                "tnum",
+                                p.extra.priceReturn >= 0 ? "text-up" : "text-down",
+                              )}
+                            >
+                              {pct(p.extra.priceReturn)}
+                            </span>
+                          </Td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-dim">
+                The price column is history, not promise — the durable part of the
+                carry trade is the carry column, at current policy rates.
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
+            {data.caveats.join(" ")}
+          </p>
+        </>
+      )}
+    </Panel>
   );
 }
