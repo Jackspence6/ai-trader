@@ -41,6 +41,15 @@ export type BacktestScenario = {
   stats: CarryStats;
 };
 
+export type EntrySweepCell = {
+  minFundingApr: number;
+  minNetEdgeBps: number;
+  liquidity: "taker" | "maker";
+  totalReturnPct: number;
+  trades: number;
+  winRate: number;
+};
+
 export type BacktestResult = {
   params: CarryBacktestParams;
   points: number;
@@ -55,6 +64,12 @@ export type BacktestResult = {
    * configuration; the grid shows what each lever is worth.
    */
   scenarios: BacktestScenario[];
+  /**
+   * Entry-gate sweep under the live regime exit: funding floor × edge floor,
+   * at taker and maker cost. The live operating point is judged by the
+   * stability of its neighbourhood — a cell that only wins alone is noise.
+   */
+  entrySweep: EntrySweepCell[];
   caveats: string[];
 };
 
@@ -150,6 +165,35 @@ export async function runCarryBacktest(config: BacktestConfig): Promise<Backtest
     };
   });
 
+  // --- entry-gate sweep -----------------------------------------------------
+  const FLOORS = [0.05, 0.08, 0.12, 0.2];
+  const EDGES = [5, 15, 30];
+  const entrySweep: EntrySweepCell[] = [];
+  for (const liquidity of ["taker", "maker"] as const) {
+    const cost = carryRoundTripFraction(liquidity);
+    for (const minFundingApr of FLOORS) {
+      for (const minNetEdgeBps of EDGES) {
+        const assets = runScenario(seriesByAsset, {
+          ...params,
+          minFundingApr,
+          minNetEdgeBps,
+          roundTripCostFraction: cost,
+          exitMedianConfirm: true,
+        });
+        const combined = combinePortfolio(assets);
+        const stats = carryStats(combined.portComposite);
+        entrySweep.push({
+          minFundingApr,
+          minNetEdgeBps,
+          liquidity,
+          totalReturnPct: stats.totalReturnPct,
+          trades: stats.trades,
+          winRate: stats.winRate,
+        });
+      }
+    }
+  }
+
   return {
     params,
     points: config.points,
@@ -158,6 +202,7 @@ export async function runCarryBacktest(config: BacktestConfig): Promise<Backtest
     portfolio: { equity: portEquity, stats: carryStats(portComposite) },
     byAsset: byAsset.map((a) => ({ asset: a.asset, stats: a.stats, points: a.points })),
     scenarios,
+    entrySweep,
     caveats: [
       "Single-venue funding carry (L1) only — not L2 cross-venue or FX carry.",
       "Delta-neutral: the price path cancels between legs, so P&L is funding minus costs.",

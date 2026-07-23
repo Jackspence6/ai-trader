@@ -85,6 +85,14 @@ type BacktestResult = {
   portfolio: { equity: { t: number; cumReturn: number }[]; stats: Stats };
   byAsset: { asset: string; stats: Stats; points: number }[];
   scenarios?: { key: string; label: string; costFraction: number; stats: Stats }[];
+  entrySweep?: {
+    minFundingApr: number;
+    minNetEdgeBps: number;
+    liquidity: "taker" | "maker";
+    totalReturnPct: number;
+    trades: number;
+    winRate: number;
+  }[];
   caveats: string[];
 };
 
@@ -297,6 +305,76 @@ export default function ResearchPage() {
               broken regime instead of a single negative print. Maker rows assume
               every entry fills at the touch — the optimistic bound.
             </p>
+
+            {data.entrySweep && data.entrySweep.length > 0 && (
+              <div className="border-t border-line px-3 py-3">
+                <Micro className="mb-2">
+                  ENTRY-GATE SWEEP · FUNDING FLOOR × EDGE FLOOR · REGIME EXIT
+                </Micro>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {(["taker", "maker"] as const).map((liq) => (
+                    <div key={liq}>
+                      <div className="micro mb-1.5 text-dim">{liq.toUpperCase()} COST</div>
+                      <table className="w-full text-[11.5px]">
+                        <thead>
+                          <tr className="border-b border-line">
+                            <Th>FLOOR</Th>
+                            <Th right>5BP</Th>
+                            <Th right>15BP</Th>
+                            <Th right>30BP</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[0.05, 0.08, 0.12, 0.2].map((floor) => {
+                            const cells = data
+                              .entrySweep!.filter(
+                                (c) => c.liquidity === liq && c.minFundingApr === floor,
+                              )
+                              .sort((a, b) => a.minNetEdgeBps - b.minNetEdgeBps);
+                            if (cells.length === 0) return null;
+                            const isLive = floor === 0.08;
+                            return (
+                              <tr key={floor} className="border-b border-line/60">
+                                <Td>
+                                  <span className="tnum text-ink">{(floor * 100).toFixed(0)}%</span>
+                                  {isLive && <span className="micro ml-1.5 text-accent">LIVE</span>}
+                                </Td>
+                                {cells.map((c) => (
+                                  <Td key={c.minNetEdgeBps} right>
+                                    <span
+                                      className={cx(
+                                        "tnum",
+                                        c.trades === 0
+                                          ? "text-dim"
+                                          : c.totalReturnPct > 0
+                                            ? "text-up"
+                                            : "text-down",
+                                      )}
+                                      title={`${c.trades} trades`}
+                                    >
+                                      {c.totalReturnPct >= 0 ? "+" : ""}
+                                      {(c.totalReturnPct * 100).toFixed(2)}%
+                                    </span>
+                                  </Td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-dim">
+                  At taker cost the whole grid is flat — there is no parameter
+                  setting that makes L1 pay; the live cell is representative, not
+                  mis-tuned. At maker cost a stable positive plateau covers the
+                  5–8% floors at every edge setting, and the live operating point
+                  sits inside it: the binding lever is execution style, not
+                  parameters. Dim cells took zero trades.
+                </p>
+              </div>
+            )}
           </div>
         </Panel>
       )}

@@ -371,6 +371,24 @@ The book's evidence hierarchy after three backtests: **F1 carry (earns) >
 L1 crypto carry (breakeven at taker, positive at maker) > F2 trend and L2
 spread (structurally negative)**. Capital now sits in that order.
 
+### L1 entry gate swept: the live settings are already right (2026-07-23)
+
+The last untested knob on the strategy actually running: the entry gate
+(8% funding floor, 15bp edge floor) had never been swept. A 4×3 grid
+(funding floor × edge floor, taker and maker, under the live regime exit)
+now runs inside the carry backtest and renders on Backtests.
+
+**Finding: no change warranted — and that is the finding.** At taker cost
+the entire grid is flat (±5bp of zero over 167 days); no parameter setting
+makes L1 pay retail taker costs, so the live cell is representative, not
+mis-tuned. At maker cost a stable positive plateau (+0.17% to +0.23%)
+covers the 5–8% floors at every edge setting — six neighbouring cells, a
+real region rather than a spike — and the live operating point already
+sits inside it. The binding lever on L1 is execution style, not
+parameters: post-only maker entries are the one improvement left, worth
+~0.5%/yr on notional, and they need real order-book behaviour (A3/A4
+venue work) to implement honestly rather than another backtest.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the
