@@ -31,6 +31,30 @@ export const H1_ATR_K = 4;
 /** Loss at the stop as a fraction of the sleeve, matching F2's discipline. */
 export const H1_RISK_PER_TRADE = 0.01;
 
+/**
+ * Exit state for an OPEN H1 position: the two exits the backtest validated —
+ * close below the exit band, or close below (highest close since entry −
+ * k×ATR). The high-water mark is recomputed from candles since entry, so no
+ * per-position state needs persisting.
+ */
+export function cryptoTrendExitState(
+  candles: Candle[],
+  openedAt: number,
+): { bandExit: boolean; trailExit: boolean } | null {
+  const st = cryptoTrendState(candles);
+  if (!st) return null;
+  const closes = candles.filter((c) => c.t >= openedAt).map((c) => c.c);
+  const last = candles[candles.length - 1].c;
+  const highs2 = candles.map((c) => c.h);
+  const lows2 = candles.map((c) => c.l);
+  const a = atr(highs2, lows2, candles.map((c) => c.c), 14)[candles.length - 1];
+  const highWater = closes.length > 0 ? Math.max(...closes) : last;
+  return {
+    bandExit: st.bandExit,
+    trailExit: a !== null && last < highWater - H1_ATR_K * a,
+  };
+}
+
 export type CryptoTrendState = {
   breakout: boolean;
   /** Close below the exit band — the live exit signal. */

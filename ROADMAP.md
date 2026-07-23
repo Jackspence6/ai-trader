@@ -429,6 +429,25 @@ the same trend gate as F2, Donchian band exit + stop backstop. Systematic
 sleeve funded $1,500 (core 5000 / fx-carry 3000). No breakout is active
 today; the scanner waits — which is the strategy working, not idling.
 
+### B1 accumulation: measured, and the answer is no (2026-07-23)
+
+The last unfunded avenue got the same treatment as every other: evidence
+before capital. Weekly DCA over the last 1,000 days of real candles LOST
+money — BTC −7.9%, ETH −26.5%, with 56–69% drawdowns — despite
+lump-at-start being up 93% (a fact about the start date, not the policy).
+B1 stays unfunded; the verdict is recorded so the question does not get
+re-asked on vibes. The negative result is the value: a funded B1 would
+have been the book's biggest loser.
+
+Also fixed while in the exits: **H1 live exits now match the backtest
+exactly.** The generic 12% backstop would have fired before the validated
+ATR×4 trail on high-vol assets, silently making live behaviour diverge
+from the evidence that funded the sleeve. The Systematic sleeve is now
+exempt from the generic stop; its exits are the backtested trail
+(recomputed from candles since entry — no per-position state) and the
+Donchian band, with the sleeve-level 25% drawdown halt as the blast-radius
+cap.
+
 **Next up:**
 
 1. **Reconciliation + venue truth (A4/A6)** — the remaining gate between the

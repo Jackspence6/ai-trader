@@ -100,7 +100,7 @@ export type ExitContext = {
    * H1 crypto trend: true when the asset has closed below its exit band —
    * the classic Donchian exit the position was entered under.
    */
-  cryptoTrendExit?: (asset: string) => boolean | undefined;
+  cryptoTrendExit?: (asset: string, openedAt: number) => { bandExit: boolean; trailExit: boolean } | undefined;
   /**
    * Current below-par discount for a stable asset (L3), as a fraction.
    * Returning a value marks the asset AS a stable; ≤ the exit threshold means
@@ -156,8 +156,13 @@ export function evaluateExits(marked: MarkedPosition[], ctx: ExitContext): ExitP
     });
 
     // --- stop loss first: it is the most urgent and shape-independent -------
+    // Exception: the Systematic (H1) sleeve, whose validated exits ARE its
+    // stops — the ATR trail and the Donchian band, exactly as backtested. A
+    // second 12% backstop on top would make live behaviour diverge from the
+    // evidence that funded the sleeve; sleeve-level drawdown limits (25%)
+    // still cap the blast radius.
     const anyUnpriced = legs.some((l) => l.totalPnlUsd === null);
-    if (!anyUnpriced) {
+    if (!anyUnpriced && sleeveId !== "systematic") {
       const groupPnl = legs.reduce((a, l) => a + (l.totalPnlUsd ?? 0), 0);
       const tradeNotional = Math.max(...legs.map((l) => Math.abs(l.notionalUsd)));
       if (tradeNotional > 0 && groupPnl < -STOP_LOSS_PCT * tradeNotional) {
@@ -209,13 +214,13 @@ export function evaluateExits(marked: MarkedPosition[], ctx: ExitContext): ExitP
       continue;
     }
 
-    // --- crypto trend (H1): long spot, exit on the Donchian band ------------
+    // --- crypto trend (H1): the backtested exits — ATR trail and band -------
     if (sleeveId === "systematic") {
       const long = legs.find((l) => l.qty > 0 && l.market === "spot");
-      if (long && ctx.cryptoTrendExit?.(asset) === true) {
-        plans.push(plan("trend_flipped"));
-      }
-      continue; // the generic stop backstop above still applies first
+      const st = long && ctx.cryptoTrendExit?.(asset, long.openedAt);
+      if (st?.trailExit) plans.push(plan("trend_stopped"));
+      else if (st?.bandExit) plans.push(plan("trend_flipped"));
+      continue;
     }
 
     // --- stablecoin peg (L3): a long spot stable, sold when par returns -----

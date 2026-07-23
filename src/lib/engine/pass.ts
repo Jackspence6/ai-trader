@@ -21,7 +21,7 @@ import { resolveTier, tierForNav } from "@/lib/calc/tiers";
 import { scan } from "@/lib/engine/scanner";
 import { scanForex, scanForexTrend } from "@/lib/engine/forexscan";
 import { scanStablePeg } from "@/lib/engine/pegscan";
-import { cryptoTrendState, scanCryptoTrend } from "@/lib/engine/trendscan";
+import { cryptoTrendExitState, scanCryptoTrend } from "@/lib/engine/trendscan";
 import { fetchStableQuotes, pegDiscount } from "@/lib/market/stables";
 import { readConfig } from "@/lib/engine/store";
 import { readHalt } from "@/lib/killswitch";
@@ -137,7 +137,7 @@ async function processExits(
   fxQuotes: Awaited<ReturnType<typeof fetchFxQuotes>>,
   fxCloses: Record<string, number[]>,
   stableDiscounts: Map<string, number>,
-  cryptoTrendExit?: (asset: string) => boolean | undefined,
+  cryptoTrendExit?: (asset: string, openedAt: number) => { bandExit: boolean; trailExit: boolean } | undefined,
 ): Promise<{ fills: Fill[]; orders: Order[]; reasons: Record<string, number> }> {
   const marked = markPositions(buildPositions(fills, funding), prices);
 
@@ -462,10 +462,8 @@ export async function runTradingPass(): Promise<PassOutcome> {
   // entries are considered, so the freed position slot and capital are
   // available to the same pass rather than a later one.
   const stableDiscounts = new Map(stableQuotes.map((q) => [q.asset, pegDiscount(q.ask)]));
-  const cryptoTrendExit = (asset: string) => {
-    const st = candles[asset] ? cryptoTrendState(candles[asset]) : null;
-    return st ? st.bandExit : undefined;
-  };
+  const cryptoTrendExit = (asset: string, openedAt: number) =>
+    candles[asset] ? cryptoTrendExitState(candles[asset], openedAt) ?? undefined : undefined;
   const exit = await processExits(
     venue, existingFills, fundingBefore, prices, fundingApr, fundingMedianApr,
     fxQuotes, fxCloses, stableDiscounts, cryptoTrendExit,

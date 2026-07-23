@@ -302,3 +302,58 @@ describe("exit manager — stablecoin peg (L3)", () => {
     expect(plans[0].reason).toBe("peg_restored");
   });
 });
+
+describe("exit manager — crypto trend (H1)", () => {
+  const h1 = (over: Partial<MarkedPosition> = {}) => [
+    pos({
+      venue: "Binance",
+      market: "spot",
+      asset: "BTC",
+      sleeveId: "systematic",
+      qty: 0.01,
+      notionalUsd: 1000,
+      totalPnlUsd: 0,
+      openedAt: 5,
+      ...over,
+    }),
+  ];
+
+  it("holds while neither validated exit has fired", () => {
+    const plans = evaluateExits(h1(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      cryptoTrendExit: () => ({ bandExit: false, trailExit: false }),
+    });
+    expect(plans).toHaveLength(0);
+  });
+
+  it("closes on the ATR trailing stop", () => {
+    const plans = evaluateExits(h1(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      cryptoTrendExit: () => ({ bandExit: false, trailExit: true }),
+    });
+    expect(plans[0].reason).toBe("trend_stopped");
+  });
+
+  it("closes on the Donchian band exit", () => {
+    const plans = evaluateExits(h1(), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      cryptoTrendExit: () => ({ bandExit: true, trailExit: false }),
+    });
+    expect(plans[0].reason).toBe("trend_flipped");
+  });
+
+  it("is EXEMPT from the generic 12% backstop — its trail IS its stop", () => {
+    // Down 20% with neither validated exit fired: the backtest held through
+    // this, so live must too. The sleeve-level 25% drawdown halt still caps
+    // the blast radius.
+    const plans = evaluateExits(h1({ totalPnlUsd: -200 }), {
+      ...NO_FX,
+      fundingApr: () => undefined,
+      cryptoTrendExit: () => ({ bandExit: false, trailExit: false }),
+    });
+    expect(plans).toHaveLength(0);
+  });
+});
