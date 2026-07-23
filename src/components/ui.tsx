@@ -209,7 +209,7 @@ export function Stat({
   sub,
   className,
 }: {
-  label: string;
+  label: ReactNode;
   children: ReactNode;
   sub?: ReactNode;
   className?: string;
@@ -220,5 +220,39 @@ export function Stat({
       <div className="text-[15px] leading-none text-ink">{children}</div>
       {sub && <div className="mt-1.5 text-[11px] leading-none">{sub}</div>}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------- Info tips */
+
+import { GLOSSARY } from "@/lib/glossary";
+
+/**
+ * The ⓘ next to jargon — a plain-English explanation on hover or tap.
+ *
+ * The operators are not finance professionals, and no screen should require
+ * them to be. Terms come from the shared glossary so every surface explains
+ * a word the same way. Rendered as a button for keyboard and touch access;
+ * the tip itself is pure CSS (group-hover / focus-within), no state.
+ */
+export function Info({ term, className }: { term: string; className?: string }) {
+  const text = GLOSSARY[term];
+  if (!text) return null;
+  return (
+    <span className={cx("group relative inline-flex", className)}>
+      <button
+        type="button"
+        aria-label={`What does this mean? ${text}`}
+        className="flex size-3.5 items-center justify-center rounded-full border border-line-bright text-[8px] leading-none text-dim transition-colors hover:border-accent hover:text-accent focus-visible:border-accent focus-visible:text-accent"
+      >
+        i
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-1.5 w-60 -translate-x-1/2 border border-line-bright bg-raised p-2 text-left text-[11px] font-normal normal-case leading-relaxed tracking-normal text-ink opacity-0 shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
   );
 }

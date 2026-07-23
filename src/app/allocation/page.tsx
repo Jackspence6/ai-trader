@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLive } from "@/lib/live";
 import { Money } from "@/lib/currency";
-import { cx, Meter, Micro, Panel, Stat, Tag } from "@/components/ui";
+import { cx, Info, Meter, Micro, Panel, Stat, Tag } from "@/components/ui";
 
 type Member = {
   sleeveId: string;
@@ -163,7 +163,14 @@ export default function PortfoliosPage() {
       {/* ------------------------------------------------ headline numbers */}
       <div className="grid grid-cols-3 gap-3">
         <Panel>
-          <Stat label="TOTAL CAPITAL" sub={<span className="text-dim">fund NAV</span>}>
+          <Stat
+            label="TOTAL CAPITAL"
+            sub={
+              <span className="flex items-center gap-1 text-dim">
+                fund NAV <Info term="nav" />
+              </span>
+            }
+          >
             <span className="tnum text-[19px] text-ink">
               {data ? <Money usd={data.navUsd} /> : "—"}
             </span>
@@ -177,7 +184,14 @@ export default function PortfoliosPage() {
           </Stat>
         </Panel>
         <Panel>
-          <Stat label="RESERVE" sub={<span className="text-dim">unallocated buffer</span>}>
+          <Stat
+            label="RESERVE"
+            sub={
+              <span className="flex items-center gap-1 text-dim">
+                unallocated buffer <Info term="reserve" />
+              </span>
+            }
+          >
             <span className="tnum text-[19px] text-muted">
               {data ? <Money usd={data.reserveUsd} /> : "—"}
             </span>
@@ -222,17 +236,35 @@ export default function PortfoliosPage() {
 
               {/* money */}
               <div className="grid grid-cols-3 gap-2 border-b border-line px-3 py-3">
-                <Stat label="ALLOCATED">
+                <Stat
+                  label={
+                    <span className="flex items-center gap-1">
+                      ALLOCATED <Info term="allocated" />
+                    </span>
+                  }
+                >
                   <span className="tnum text-[15px] text-ink">
                     ${p.allocatedUsd.toLocaleString("en-US")}
                   </span>
                 </Stat>
-                <Stat label="DEPLOYED">
+                <Stat
+                  label={
+                    <span className="flex items-center gap-1">
+                      DEPLOYED <Info term="deployed" />
+                    </span>
+                  }
+                >
                   <span className="tnum text-[15px] text-muted">
                     ${p.deployedUsd.toFixed(0)}
                   </span>
                 </Stat>
-                <Stat label="AVAILABLE">
+                <Stat
+                  label={
+                    <span className="flex items-center gap-1">
+                      AVAILABLE <Info term="available" />
+                    </span>
+                  }
+                >
                   <span className="tnum text-[15px] text-muted">
                     ${p.availableUsd.toFixed(0)}
                   </span>
@@ -243,14 +275,17 @@ export default function PortfoliosPage() {
               <div className="grid grid-cols-4 gap-2 border-b border-line px-3 py-2.5">
                 {(
                   [
-                    ["INCOME", p.pnl.fundingUsd],
-                    ["REALISED", p.pnl.realisedUsd],
-                    ["UNREAL.", p.pnl.unrealisedUsd ?? 0],
-                    ["TOTAL", p.pnl.totalUsd],
+                    ["INCOME", p.pnl.fundingUsd, "income"],
+                    ["REALISED", p.pnl.realisedUsd, "realised"],
+                    ["UNREAL.", p.pnl.unrealisedUsd ?? 0, "unrealised"],
+                    ["TOTAL", p.pnl.totalUsd, ""],
                   ] as const
-                ).map(([label, v]) => (
+                ).map(([label, v, term]) => (
                   <div key={label} className="min-w-0">
-                    <Micro>{label}</Micro>
+                    <span className="flex items-center gap-1">
+                      <Micro>{label}</Micro>
+                      {term && <Info term={term} />}
+                    </span>
                     <div
                       className={cx(
                         "tnum mt-1 text-[12.5px]",
@@ -265,18 +300,28 @@ export default function PortfoliosPage() {
 
               {/* charter limits */}
               <div className="space-y-2.5 border-b border-line px-3 py-3">
-                <Meter
-                  used={p.drawdownPct * 100}
-                  limit={p.maxDrawdownPct * 100}
-                  label="DRAWDOWN VS CHARTER HALT"
-                  unit="%"
-                />
-                <Meter
-                  used={p.allocatedUsd}
-                  limit={Math.max(p.capUsd, 1)}
-                  label={`CHARTER CAP · ≤${(p.maxShareOfNav * 100).toFixed(0)}% OF NAV`}
-                  unit="$"
-                />
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-1">
+                    <Meter
+                      used={p.drawdownPct * 100}
+                      limit={p.maxDrawdownPct * 100}
+                      label="DRAWDOWN VS CHARTER HALT"
+                      unit="%"
+                    />
+                  </div>
+                  <Info term="drawdown" className="mt-0.5" />
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-1">
+                    <Meter
+                      used={p.allocatedUsd}
+                      limit={Math.max(p.capUsd, 1)}
+                      label={`CHARTER CAP · ≤${(p.maxShareOfNav * 100).toFixed(0)}% OF NAV`}
+                      unit="$"
+                    />
+                  </div>
+                  <Info term="chartercap" className="mt-0.5" />
+                </div>
               </div>
 
               {/* member streams + funding inputs */}
