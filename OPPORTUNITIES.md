@@ -102,7 +102,7 @@ dated and re-arguable with new evidence — like every other verdict here.
 ### In-system (no purchases)
 
 | Idea | Verdict | Why |
-|---|---|---|
+| --- | --- | --- |
 | M2 basis execution | **DO** | Scored live already; deterministic convergence; second income engine. |
 | S1 staked carry (ETH yield + short hedge) | **DO (research)** | ~3.2–4% base yield, delta-neutral structure, backtestable free. |
 | Meta-labeling ML on our own fills | **WATCH** | Right move at ~200 completed trades; premature now. |
@@ -113,7 +113,7 @@ dated and re-arguable with new evidence — like every other verdict here.
 ### Out-of-system (hardware / capital purchases)
 
 | Idea | Verdict | Numbers (researched 2026-07) |
-|---|---|---|
+| --- | --- | --- |
 | **GPU rental** (Vast.ai / Salad) | **BUY?** — the one hardware idea that clears the bar | RTX 4090 (~R40–48k in SA) nets roughly $200–300/mo at 40–50% utilization after electricity; verified hosts report ~$180/mo gross conservative, up to $400–900/mo at high utilization. Electricity is the kill-factor for most side hardware, but GPU rental revenue/kWh is high enough that SA's ~R3.5/kWh only costs ~R400/mo. Honest payback: **12–20 months**, NOT guaranteed — utilization depends on verification, 100Mbps+ upload, and uptime (load shedding is a real reliability risk to the host rating; a UPS becomes part of the bill). Fully automatable: listing, pricing, monitoring all scriptable. |
 | Bitcoin/crypto mining | **REJECTED** | Breakeven is ~$0.06–0.10/kWh on current-gen ASICs; SA residential power ~R3.5/kWh ≈ $0.19 is **2–3× over breakeven**. Home mining loses money in 2026, full stop. Only worth revisiting with free solar overproduction. |
 | Storage rental (Storj/Sia) | **REJECTED as purchase, WATCH as freebie** | $1.50/TB/mo stored + $20/TB egress sounds fine until you learn nodes take months to fill and realistic income is a few dollars/TB/mo. Never worth buying disks for; barely worth the electricity on an already-running machine. |
