@@ -51,25 +51,37 @@ export const TIERS: Tier[] = [
     name: "Starter",
     minNavUsd: 500,
     maxNavUsd: 2_500,
-    liveStrategies: ["L1", "F1"],
-    riskBudget: { low: 0.65, medium: 0, high: 0 },
-    maxConcurrentPositions: 1,
+    // Realigned 2026-07-26. The original T1 was written for a single-book
+    // fund: L1+F1 only, one position per account. The portfolio charter
+    // (GOVERNANCE.md) now decides WHICH strategies hold capital — with
+    // evidence, per-sleeve caps and drawdown halts — and the operator's
+    // standing instruction funds all three portfolios at this NAV. A ladder
+    // that silently forbade two funded books from ever trading was two
+    // governance layers contradicting each other; the book sat frozen at its
+    // first two entries for three days proving it. The ladder's job at this
+    // scale is concurrency and size, not strategy selection: three slots per
+    // account so a carry position cannot permanently starve the trend book,
+    // and a medium budget matching the charter's Aggressive cap (25%).
+    liveStrategies: ["L1", "L3", "F1", "F2", "H1"],
+    riskBudget: { low: 0.65, medium: 0.25, high: 0 },
+    maxConcurrentPositions: 3,
     maxVenues: 1,
     unlocks: [
       "Funding carry live on one venue",
-      "1–2 major symbols only",
-      "Low-risk tier only",
+      "Charter-funded trend books (H1 crypto, F2 tuition) within sleeve caps",
+      "Peg scanner armed",
+      "Medium risk up to the charter's Aggressive cap",
     ],
     rationale:
-      "One strategy on one venue — the simplest configuration that can genuinely work.",
+      "The simplest configuration in which every charter-funded book can actually trade. Sleeve allocations and per-trade stops bound each position; the ladder bounds how many can pile up.",
   },
   {
     id: "T2",
     name: "Core",
     minNavUsd: 2_500,
     maxNavUsd: 10_000,
-    liveStrategies: ["L1", "L2", "L3", "F1", "F2"],
-    riskBudget: { low: 0.65, medium: 0.15, high: 0 },
+    liveStrategies: ["L1", "L2", "L3", "F1", "F2", "H1", "M2"],
+    riskBudget: { low: 0.65, medium: 0.25, high: 0 },
     maxConcurrentPositions: 4,
     maxVenues: 2,
     unlocks: [
@@ -86,7 +98,7 @@ export const TIERS: Tier[] = [
     name: "Expansion",
     minNavUsd: 10_000,
     maxNavUsd: 50_000,
-    liveStrategies: ["L1", "L2", "L3", "M1", "M2", "F1", "F2"],
+    liveStrategies: ["L1", "L2", "L3", "M1", "M2", "F1", "F2", "H1"],
     riskBudget: { low: 0.6, medium: 0.3, high: 0.05 },
     maxConcurrentPositions: 8,
     maxVenues: 3,

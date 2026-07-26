@@ -191,11 +191,12 @@ export async function effectiveTier(
   }
 
   for (const tier of eligible) {
-    // The lowest tier has a zero threshold and needs no hold period — there is
-    // nothing to confirm about having no money.
-    if (tier.minNavUsd <= 0) {
-      return { tierId: tier.id, daysHeld: 0, blockedBy: null };
-    }
+    // The zero-threshold base tier needs no hold period — there is nothing to
+    // confirm about having no money. But it must not swallow the fall-through
+    // below: returning it with daysHeld 0 while a richer tier's hold period is
+    // running froze the displayed promotion clock at 0/7 forever (found
+    // 2026-07-26, three real days into a hold that read as zero).
+    if (tier.minNavUsd <= 0) break;
     const held = await daysHeldAbove(tier.minNavUsd);
     if (held >= holdDays) {
       return { tierId: tier.id, daysHeld: held, blockedBy: null };
@@ -203,8 +204,11 @@ export async function effectiveTier(
   }
 
   // NAV clears a higher tier but the hold period is unmet. Sit at the base tier
-  // and say which one is pending.
+  // and say which one is pending, with the real days-held count on the clock.
   const top = eligible[0];
+  if (top.minNavUsd <= 0) {
+    return { tierId: top.id, daysHeld: 0, blockedBy: null };
+  }
   return {
     tierId: tiers[0]?.id ?? "T0",
     daysHeld: await daysHeldAbove(top.minNavUsd),

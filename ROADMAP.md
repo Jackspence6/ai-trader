@@ -168,6 +168,30 @@ immediately and honestly — MXN's carry does not clear its 12bp toll,
 USDJPY remains the earner — and the live scan now scores 61 candidates a
 pass (was 55) with the gate still choosing on evidence.
 
+### The three-day freeze: two governance layers in contradiction (2026-07-26)
+
+The operator noticed the book had sat on its first three legs for days —
+and the instinct was right. Root cause: the capital ladder predates the
+portfolio charter. At this NAV it allowed only L1+F1 with ONE concurrent
+position per account, so the first carry in each account permanently
+starved the other funded books: 452 passes, 6,131 position-limit
+rejections, zero trades after minute one. The Aggressive book's H1 was
+not even nominally live until T4 ($50k) — capital the charter had
+deliberately allocated, frozen by a rule written for a different fund.
+
+The fix keeps both layers honest about their jobs: the charter decides
+WHICH strategies hold capital (evidence, sleeve caps, drawdown halts);
+the ladder decides HOW MUCH concurrency the NAV supports. T1 now admits
+the charter-funded set (L1, L3, F1, F2, H1) with three slots per account
+and a medium-risk budget matching the charter's Aggressive cap. One pass
+after the fix the book entered five positions across all three accounts —
+including a second-venue DOGE carry and the Experimental book's first
+trend trade. H1 remains correctly flat: no 100-day breakout exists today,
+and patience is the strategy.
+
+Also fixed: `effectiveTier`'s base-tier early-return swallowed the
+promotion fall-through, so the ladder clock read 0/7 forever. It now
+shows the truth (3/7 days held toward T1).
 ## 2. Still to do
 
 Ordered by dependency. Nothing later works without the things above it.

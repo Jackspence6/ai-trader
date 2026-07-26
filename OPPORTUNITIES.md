@@ -50,14 +50,31 @@ evidence; where we can measure before buying, we measure first.
 
 ## 2. In flight
 
-- Paper fund running the R30,000 seed: 5-minute loop, 3 open legs
-  (BNB funding carry + USDJPY interest carry), automated re-validation
-  grading all five strategies every 12h.
-- ML prediction ledger re-arming after the fresh start (~256 pending;
-  first grades mature ~7 days from 2026-07-23).
+- Paper fund running the R30,000 seed: 5-minute loop, **5 open positions
+  across all three accounts** after the 2026-07-26 ladder realignment —
+  BNB + DOGE funding carries (Conservative, two venues), USDJPY + USDCHF
+  interest carries, EURUSD trend (Experimental tuition). H1 (Aggressive)
+  is armed and waiting for a genuine 100-day breakout — absence of signal,
+  not blockage.
+- Automated re-validation grading all five strategies every ~12h (7 runs
+  recorded so far, alerts working).
+- ML prediction ledger: ~256 pending; first grades mature ~2026-07-30,
+  then the veto can start earning promotion.
+- Ladder promotion clock now honest: 3/7 days held toward T1.
 
 ## 3. Shipped (dated, newest first)
 
+- **2026-07-26 · Tier ladder realigned with the charter** — found and fixed
+  the freeze: the pre-charter ladder allowed only L1+F1 with ONE position
+  per account at this NAV, so the first two entries starved every other
+  funded book for three days (6,131 position-limit rejections). T1 now
+  admits the charter-funded strategies with three slots per account; the
+  book entered 5 positions within one pass of the fix. Also fixed the
+  promotion clock always reading 0/7 (base-tier early-return swallowed the
+  fall-through).
+- **2026-07-26 · Opportunities ledger + income research sweep** — this
+  file; GPU rental BUY?, mining/storage/bandwidth/DePIN rejected on
+  numbers.
 - **2026-07-23 · Automated re-validation** — backtests run themselves every
   12h, health-grade every strategy, alert on capital-vs-evidence mismatch.
 - **2026-07-23 · FX universe widened** — NZD/SEK/MXN added behind punitive
