@@ -1,0 +1,124 @@
+# Opportunities — the living ledger
+
+**Standing orders (for the agent):** read this file at the start of every
+session, before choosing work. Update it at the end of every session: move
+shipped things to SHIPPED, re-rank NEXT UP, add new ideas with a dated
+verdict. This file is the answer to "what have you done, what are you doing,
+what should we do next" — if it isn't written here, it didn't happen.
+
+**The operating constraint:** everything on this list must be able to run
+itself. Ideas may require buying hardware or signing up for services — those
+are documented with costs and payback so the operator can decide — but the
+ongoing operation must be code, not chores.
+
+**The method still applies:** evidence before capital, for hardware exactly
+as for strategies. A payback estimate in a blog post is a claim, not
+evidence; where we can measure before buying, we measure first.
+
+---
+
+## 1. Next up — ranked (the agent's recommendation, updated 2026-07-26)
+
+1. **Go live with small real capital** — the single highest-EV item on this
+   list and the only one that turns the machine we already built into actual
+   income. The paper book earns simulated money; every day it performs is
+   evidence, but R0 of it is real. Needs: an exchange account (Binance or
+   VALR for ZAR on/off-ramp) + trade-only API keys, and the A4/A6 work
+   (live venue adapter + reconciliation) that is deliberately sequenced
+   before the first real order. **Operator action: exchange account +
+   trade-only API keys when ready. Start tiny — a few hundred rand.**
+2. **M2 dated-futures basis execution** — a second delta-neutral income
+   stream already scored live every pass, deterministic at settlement,
+   structurally safer than funding carry. ~1 day of careful engine work
+   (dated-future instrument, expiry settlement, convergence accrual).
+   No purchases, no sign-ups.
+3. **S1 staked-carry research (new strategy idea, 2026-07-26)** — ETH
+   staking yields ~3.2–4% while a perp short cancels the price risk;
+   staking yield + funding (when positive) − borrow/hedge costs is a
+   delta-neutral carry that most retail never structures. Backtestable
+   NOW with free data (staking APR history + our funding history) before
+   any real ETH is involved. If the backtest clears costs, it becomes the
+   third carry engine and scales with real capital when we go live.
+4. **Fear & Greed regime feature + derivatives positioning recorder** —
+   free data that sharpens the ML veto (full F&G history is backtestable
+   immediately; open-interest/long-short data must be recorded now because
+   venues only serve ~30 days of it).
+5. **Telegram alerting** — not income, but the operator's eyes on the
+   income: fills, halts, re-validation alerts pushed to your phone.
+   **Operator action: create a bot with @BotFather (~2 min), paste the
+   token.**
+
+## 2. In flight
+
+- Paper fund running the R30,000 seed: 5-minute loop, 3 open legs
+  (BNB funding carry + USDJPY interest carry), automated re-validation
+  grading all five strategies every 12h.
+- ML prediction ledger re-arming after the fresh start (~256 pending;
+  first grades mature ~7 days from 2026-07-23).
+
+## 3. Shipped (dated, newest first)
+
+- **2026-07-23 · Automated re-validation** — backtests run themselves every
+  12h, health-grade every strategy, alert on capital-vs-evidence mismatch.
+- **2026-07-23 · FX universe widened** — NZD/SEK/MXN added behind punitive
+  spread tolls; backtest immediately rejected MXN carry (doesn't clear its
+  toll); scan now scores 61 candidates/pass.
+- **2026-07-23 · R30,000 fresh start** — every portfolio funded per charter;
+  first fills seconds after restart.
+- **2026-07-23 · Go-live sweep** — no demo content, favicon, glossary tips,
+  System page honesty pass.
+- **2026-07-23 · Portfolio governance** — charter caps, isolation halts,
+  reason-logged capital moves, Portfolios page.
+- **2026-07-22/23 · The evidence pipeline** — 7 strategies backtested with
+  live signal code; L2/F2/B1 defunded by their own numbers; H1 funded and
+  later re-confirmed at +17.2%/yr over 1,000 days.
+- **2026-07-22 · Self-grading ML** — persistence model, prediction ledger,
+  earn-the-veto promotion gate.
+
+## 4. Avenues researched — verdicts (2026-07-26)
+
+Every idea gets a verdict: **DO** (build it), **BUY?** (works, needs a
+purchase — operator decides), **WATCH** (re-check when conditions change),
+**REJECTED** (measured or researched, doesn't clear the bar). Verdicts are
+dated and re-arguable with new evidence — like every other verdict here.
+
+### In-system (no purchases)
+
+| Idea | Verdict | Why |
+|---|---|---|
+| M2 basis execution | **DO** | Scored live already; deterministic convergence; second income engine. |
+| S1 staked carry (ETH yield + short hedge) | **DO (research)** | ~3.2–4% base yield, delta-neutral structure, backtestable free. |
+| Meta-labeling ML on our own fills | **WATCH** | Right move at ~200 completed trades; premature now. |
+| More venues for L1/L2 (Gate, Bitget…) | **WATCH** | More funding spreads to compare; marginal until real capital. |
+| MEV / on-chain arbitrage | **REJECTED** | Dominated by specialists with colocation and private orderflow; retail entrants fund the winners. |
+| Airdrop farming automation | **REJECTED** | ToS-gray, sybil-filtered heavily in 2026, effort-heavy, declining yields — not the reputation risk for the money. |
+
+### Out-of-system (hardware / capital purchases)
+
+| Idea | Verdict | Numbers (researched 2026-07) |
+|---|---|---|
+| **GPU rental** (Vast.ai / Salad) | **BUY?** — the one hardware idea that clears the bar | RTX 4090 (~R40–48k in SA) nets roughly $200–300/mo at 40–50% utilization after electricity; verified hosts report ~$180/mo gross conservative, up to $400–900/mo at high utilization. Electricity is the kill-factor for most side hardware, but GPU rental revenue/kWh is high enough that SA's ~R3.5/kWh only costs ~R400/mo. Honest payback: **12–20 months**, NOT guaranteed — utilization depends on verification, 100Mbps+ upload, and uptime (load shedding is a real reliability risk to the host rating; a UPS becomes part of the bill). Fully automatable: listing, pricing, monitoring all scriptable. |
+| Bitcoin/crypto mining | **REJECTED** | Breakeven is ~$0.06–0.10/kWh on current-gen ASICs; SA residential power ~R3.5/kWh ≈ $0.19 is **2–3× over breakeven**. Home mining loses money in 2026, full stop. Only worth revisiting with free solar overproduction. |
+| Storage rental (Storj/Sia) | **REJECTED as purchase, WATCH as freebie** | $1.50/TB/mo stored + $20/TB egress sounds fine until you learn nodes take months to fill and realistic income is a few dollars/TB/mo. Never worth buying disks for; barely worth the electricity on an already-running machine. |
+| Bandwidth sharing (Grass, Honeygain) | **REJECTED** | $5–20/mo, sells your residential IP to scrapers, likely violates ISP ToS. Not for that money. |
+| Helium / DePIN hotspots | **REJECTED for SA** | The $80–150/mo stories are dense US cities; SA coverage demand is thin and most non-US operators report $2–10/mo. Token-denominated, hardware upfront. |
+| ETH solo staking (32 ETH) | **WATCH** | ~3.2–4% APR is real but the capital bar (~$100k+) is ours-someday, not now; the S1 staked-carry research above captures the same edge at fundable size via liquid staking tokens — evidence first. |
+
+### The honest headline
+
+Nothing out-of-system beats accelerating the in-system path. GPU rental is
+the only researched purchase with a credible payback, and its ~R4k/mo
+ceiling is what the fund itself should out-earn once live capital compounds
+through validated carry. The out-of-system list exists so we never re-argue
+these from vibes — each has a dated verdict and a re-open condition.
+
+## 5. Operator actions pending (each ~2 minutes unless noted)
+
+- [ ] Telegram bot token (@BotFather) → alerts to your phone.
+- [ ] CryptoCompare free API key → news-sentiment feature for the ML.
+- [ ] Decide on GPU rental (R40–48k + UPS; 12–20 month payback, not
+      guaranteed) — if yes, the agent scripts the entire host setup.
+- [ ] When ready to go live: exchange account (Binance / VALR) with
+      **trade-only** API keys (never withdrawal-enabled), small seed.
+- [ ] Later, optional: Anthropic API key (~$1/mo) for the news/regime
+      classifier described in ML.md.
