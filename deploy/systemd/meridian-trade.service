@@ -1,0 +1,27 @@
+# The Asset Markets loop. Exactly one instance, ever — two loops double every
+# position and neither knows about the other.
+#
+# StartLimit is deliberate. A loop that crashes on a bad config and restarts
+# forever is a loop that hides the bug: after five failures in two minutes it
+# stays down and waits for a person.
+
+[Unit]
+Description=Meridian trading loop
+After=network-online.target meridian-console.service
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=meridian
+WorkingDirectory=/opt/meridian
+EnvironmentFile=/opt/meridian/.env.local
+ExecStart=/usr/bin/env pnpm trade -- --interval 300
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/var/log/meridian/trade.log
+StandardError=append:/var/log/meridian/trade.log
+
+[Install]
+WantedBy=multi-user.target

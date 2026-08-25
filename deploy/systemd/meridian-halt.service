@@ -1,0 +1,23 @@
+# The standalone kill switch.
+#
+# A separate process on :3999 so that halting still works when the console is
+# the thing that is broken — which is exactly when someone reaches for it.
+
+[Unit]
+Description=Meridian kill switch endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meridian
+WorkingDirectory=/opt/meridian
+EnvironmentFile=/opt/meridian/.env.local
+ExecStart=/usr/bin/env pnpm halt:server
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/meridian/halt.log
+StandardError=append:/var/log/meridian/halt.log
+
+[Install]
+WantedBy=multi-user.target

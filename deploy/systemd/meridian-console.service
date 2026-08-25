@@ -1,0 +1,21 @@
+# The console. Losing it costs you the interface, not the book — which is why it
+# restarts freely and the trading loop does not.
+
+[Unit]
+Description=Meridian console
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meridian
+WorkingDirectory=/opt/meridian
+EnvironmentFile=/opt/meridian/.env.local
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/meridian/console.log
+StandardError=append:/var/log/meridian/console.log
+
+[Install]
+WantedBy=multi-user.target

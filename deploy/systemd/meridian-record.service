@@ -1,0 +1,24 @@
+# The market-data recorder.
+#
+# The one process worth watching most closely, because its failure is silent and
+# unrecoverable: a backtest cannot be run on data nobody captured. Restarts
+# aggressively and on any exit, not just failure.
+
+[Unit]
+Description=Meridian market recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meridian
+WorkingDirectory=/opt/meridian
+EnvironmentFile=/opt/meridian/.env.local
+ExecStart=/usr/bin/env pnpm record
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/meridian/record.log
+StandardError=append:/var/log/meridian/record.log
+
+[Install]
+WantedBy=multi-user.target
