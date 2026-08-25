@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oddsengine"
+version = "0.1.0"
+description = "Measurement-first SA sportsbook + Polymarket arbitrage engine (Phase 1: ingest, match, detect, score, alert, measure)"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "websockets>=12.0",
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "rapidfuzz>=3.6",
+    "structlog>=24.1",
+    "python-dateutil>=2.9",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "redis>=5.0",
+    "asyncpg>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4"]
+scrape = ["playwright>=1.44"]
+
+[tool.setuptools.packages.find]
+include = ["oddsengine*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

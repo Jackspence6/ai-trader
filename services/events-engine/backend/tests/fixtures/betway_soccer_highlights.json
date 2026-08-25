@@ -1,0 +1,135 @@
+{
+  "_source": "www.betway.co.za /sportsapi/br/v1/BetBook/Highlights/ (sportId=soccer) — live capture 2026-08-25, trimmed",
+  "isFinalPage": false,
+  "events": [
+    {
+      "eventId": 73394738,
+      "name": "Sabah Masazir vs. Hapoel Be`er Sheva FC",
+      "homeTeam": "Sabah Masazir",
+      "awayTeam": "Hapoel Be`er Sheva FC",
+      "league": "UEFA Champions League",
+      "leagueId": 7,
+      "region": "International Clubs",
+      "sportId": "soccer",
+      "expectedStartEpoch": 1787676300,
+      "isLive": false,
+      "isOutright": false,
+      "isFinished": false,
+      "isActive": true,
+      "shouldDisplay": true
+    },
+    {
+      "_trap": "outright — has no two teams and must be dropped",
+      "eventId": 70000001,
+      "name": "UEFA Champions League - Winner",
+      "homeTeam": "",
+      "awayTeam": "",
+      "league": "UEFA Champions League",
+      "region": "International Clubs",
+      "sportId": "soccer",
+      "expectedStartEpoch": 1800000000,
+      "isLive": false,
+      "isOutright": true,
+      "isFinished": false
+    }
+  ],
+  "markets": [
+    {
+      "marketId": "733947381", "eventId": 73394738, "name": "[Win/Draw/Win]",
+      "displayName": "1X2", "marketTypeCName": "win-draw-win", "handicap": 0,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": false, "isSquashedMarket": false,
+      "additionalInfo": {"Producer": "3", "ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    },
+    {
+      "marketId": "7339473829", "eventId": 73394738, "name": "[Both Teams To Score]",
+      "displayName": "BTTS (GG/NG)", "marketTypeCName": "both-teams-to-score", "handicap": 0,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": false, "isSquashedMarket": false,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    },
+    {
+      "_note": "the squashed parent that carries the WHOLE totals ladder",
+      "marketId": "7339473818", "eventId": 73394738, "name": "Total Goals",
+      "displayName": "Total Goals", "marketTypeCName": "Total", "handicap": 0,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": true, "isSquashedMarket": false,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    },
+    {
+      "_trap": "per-line child shell — listed but carries no outcomes",
+      "marketId": "7339473818total_2.5~", "eventId": 73394738, "name": "Total",
+      "displayName": "Total (2.5)", "marketTypeCName": "Total", "handicap": 2.5,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": false, "isSquashedMarket": true,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    },
+    {
+      "_trap": "1st-half total: same cname, no regular_play — must NOT map",
+      "marketId": "7339473877", "eventId": 73394738, "name": "Total Goals",
+      "displayName": "1st Half Total Goals", "marketTypeCName": "Total", "handicap": 0,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": true, "isSquashedMarket": false,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"1st_half\"]"}
+    },
+    {
+      "_trap": "cname not on the allowlist",
+      "marketId": "7339473844", "eventId": 73394738, "name": "Correct Score",
+      "displayName": "Correct Score", "marketTypeCName": "correct-score", "handicap": 0,
+      "isActive": true, "isSuspended": false, "shouldDisplay": true,
+      "isSquashedParent": false, "isSquashedMarket": false,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    },
+    {
+      "_trap": "suspended 1X2 on a second event — mapped, but must be marked suspended",
+      "marketId": "733947399", "eventId": 73394739, "name": "[Win/Draw/Win]",
+      "displayName": "1X2", "marketTypeCName": "win-draw-win", "handicap": 0,
+      "isActive": true, "isSuspended": true, "shouldDisplay": true,
+      "isSquashedParent": false, "isSquashedMarket": false,
+      "additionalInfo": {"ProviderMarketGroups": "[\"all\",\"score\",\"regular_play\"]"}
+    }
+  ],
+  "outcomes": [
+    {"outcomeId": "7339473811", "marketId": "733947381", "eventId": 73394738, "name": "Sabah Masazir", "displayName": "Sabah Masazir", "handicap": 0, "sbv": "", "index": 6, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "733947381"},
+    {"outcomeId": "7339473812", "marketId": "733947381", "eventId": 73394738, "name": "Draw", "displayName": "Draw", "handicap": 0, "sbv": "", "index": 7, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "733947381"},
+    {"outcomeId": "7339473813", "marketId": "733947381", "eventId": 73394738, "name": "Hapoel Be`Er Sheva FC", "displayName": "Hapoel Be`Er Sheva FC", "handicap": 0, "sbv": "", "index": 8, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "733947381"},
+
+    {"outcomeId": "733947382974", "marketId": "7339473829", "eventId": 73394738, "name": "Yes", "handicap": 0, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473829"},
+    {"outcomeId": "733947382976", "marketId": "7339473829", "eventId": 73394738, "name": "No", "handicap": 0, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473829"},
+
+    {"outcomeId": "7339473818total_0.5~12", "marketId": "7339473818", "eventId": 73394738, "name": "Over ", "handicap": 0.5, "sbv": " (0.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_0.5~"},
+    {"outcomeId": "7339473818total_0.5~13", "marketId": "7339473818", "eventId": 73394738, "name": "Under ", "handicap": 0.5, "sbv": " (0.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_0.5~"},
+    {"outcomeId": "7339473818total_1.5~12", "marketId": "7339473818", "eventId": 73394738, "name": "Over ", "handicap": 1.5, "sbv": " (1.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_1.5~"},
+    {"outcomeId": "7339473818total_1.5~13", "marketId": "7339473818", "eventId": 73394738, "name": "Under ", "handicap": 1.5, "sbv": " (1.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_1.5~"},
+    {"outcomeId": "7339473818total_2.5~12", "marketId": "7339473818", "eventId": 73394738, "name": "Over ", "handicap": 2.5, "sbv": " (2.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_2.5~"},
+    {"outcomeId": "7339473818total_2.5~13", "marketId": "7339473818", "eventId": 73394738, "name": "Under ", "handicap": 2.5, "sbv": " (2.5)", "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473818total_2.5~"},
+
+    {"outcomeId": "7339473877h12", "marketId": "7339473877", "eventId": 73394738, "name": "Over ", "handicap": 0.5, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473877total_0.5~"},
+    {"outcomeId": "7339473877h13", "marketId": "7339473877", "eventId": 73394738, "name": "Under ", "handicap": 0.5, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473877total_0.5~"},
+
+    {"outcomeId": "733947384401", "marketId": "7339473844", "eventId": 73394738, "name": "1-0", "handicap": 0, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "7339473844"},
+
+    {"outcomeId": "7339473991", "marketId": "733947399", "eventId": 73394739, "name": "Alpha FC", "handicap": 0, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "733947399"},
+    {"outcomeId": "7339473992", "marketId": "733947399", "eventId": 73394739, "name": "Draw", "handicap": 0, "isTradingActive": true, "shouldDisplay": true, "originalMarketId": "733947399"},
+    {"outcomeId": "7339473993", "marketId": "733947399", "eventId": 73394739, "name": "Beta FC", "handicap": 0, "isTradingActive": false, "shouldDisplay": true, "originalMarketId": "733947399"}
+  ],
+  "prices": [
+    {"outcomeId": "7339473811", "numerator": 23, "denominator": 25, "priceDecimal": 1.92},
+    {"outcomeId": "7339473812", "numerator": 14, "denominator": 5, "priceDecimal": 3.8},
+    {"outcomeId": "7339473813", "numerator": 5, "denominator": 2, "priceDecimal": 3.5},
+    {"outcomeId": "733947382974", "numerator": 14, "denominator": 25, "priceDecimal": 1.56},
+    {"outcomeId": "733947382976", "numerator": 59, "denominator": 50, "priceDecimal": 2.18},
+    {"outcomeId": "7339473818total_0.5~12", "priceDecimal": 1.02},
+    {"outcomeId": "7339473818total_0.5~13", "priceDecimal": 8.2},
+    {"outcomeId": "7339473818total_1.5~12", "priceDecimal": 1.18},
+    {"outcomeId": "7339473818total_1.5~13", "priceDecimal": 3.95},
+    {"outcomeId": "7339473818total_2.5~12", "priceDecimal": 1.59},
+    {"outcomeId": "7339473818total_2.5~13", "priceDecimal": 2.12},
+    {"outcomeId": "7339473877h12", "priceDecimal": 1.45},
+    {"outcomeId": "7339473877h13", "priceDecimal": 2.6},
+    {"outcomeId": "733947384401", "priceDecimal": 9.5},
+    {"outcomeId": "7339473991", "priceDecimal": 2.1},
+    {"outcomeId": "7339473992", "priceDecimal": 3.3},
+    {"outcomeId": "7339473993", "priceDecimal": 3.4}
+  ]
+}

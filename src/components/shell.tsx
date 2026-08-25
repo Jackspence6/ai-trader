@@ -10,7 +10,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import { NAV, isNavActive, navIndex, navLocation, type NavItem } from "@/lib/nav";
+import {
+  SECTIONS,
+  isNavActive,
+  navIndex,
+  navLocation,
+  type NavItem,
+  type NavSection,
+} from "@/lib/nav";
 import { utcClock } from "@/lib/format";
 import { useLive, type LiveState } from "@/lib/live";
 import { CurrencySwitch, Money } from "@/lib/currency";
@@ -197,6 +204,63 @@ function Badge({ item, collapsed }: { item: NavItem; collapsed?: boolean }) {
 
 /* -------------------------------------------------------------- Nav list */
 
+function DeskHeader({
+  section,
+  open,
+  onToggle,
+  collapsed,
+}: {
+  section: NavSection;
+  open: boolean;
+  onToggle: () => void;
+  collapsed?: boolean;
+}) {
+  if (collapsed) {
+    return <div className="mx-3 my-1.5 border-t border-line-bright" aria-hidden />;
+  }
+  return (
+    <button
+      onClick={onToggle}
+      title={section.hint}
+      aria-expanded={open}
+      className="group flex w-full items-center gap-2 px-3 py-1.5 text-left"
+    >
+      <span
+        className={cx(
+          "block size-1.5 shrink-0 transition-colors",
+          open ? "bg-accent" : "bg-dim group-hover:bg-muted",
+        )}
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className={cx(
+            "micro block truncate transition-colors",
+            open ? "text-ink" : "text-muted group-hover:text-ink",
+          )}
+        >
+          {section.label}
+        </span>
+        <span className="block truncate text-[9.5px] lowercase tracking-wide text-dim/70">
+          {section.sub}
+          {section.currency ? ` · ${section.currency.toLowerCase()}` : ""}
+        </span>
+      </span>
+      <span className="micro shrink-0 text-dim/70">{open ? "\u2212" : "+"}</span>
+    </button>
+  );
+}
+
+/* -------------------------------------------------------------- Nav list */
+
+/**
+ * The rail.
+ *
+ * Three sections: the firm, then a desk each. The firm is always open — "how are
+ * we doing" is never one desk's answer — and the desk you are standing in opens
+ * with it. The other desk collapses to a single header rather than disappearing
+ * behind a switcher, because an operator should be able to see that it exists,
+ * and reach it, without first knowing it is there.
+ */
 function NavList({
   collapsed,
   onNavigate,
@@ -205,83 +269,117 @@ function NavList({
   onNavigate?: () => void;
 }) {
   const path = usePathname();
+  const here = navLocation(path);
+  const [manual, setManual] = useState<Record<string, boolean>>({});
+
+  const isOpen = (s: NavSection) => {
+    if (s.kind === "firm") return true;
+    if (s.key in manual) return manual[s.key];
+    return here?.section.key === s.key;
+  };
 
   return (
     <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
-      {NAV.map((group) => (
-        <div key={group.key} className="py-1.5">
-          {collapsed ? (
-            <div className="mx-3 my-1 border-t border-line" aria-hidden />
-          ) : (
-            <div className="flex items-baseline gap-1.5 px-3 py-1">
-              <span className="micro text-dim">{group.label}</span>
-              <span className="text-[9.5px] lowercase tracking-wide text-dim/70">
-                · {group.sub}
-              </span>
-            </div>
-          )}
-          <ul>
-            {group.items.map((item) => {
-              const active = isNavActive(path, item.href);
-              return (
-                <li key={item.key} className="relative">
-                  <Link
-                    href={item.href}
-                    title={collapsed ? `${item.label} — ${item.hint}` : item.hint}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    className={cx(
-                      "group relative flex items-center gap-2.5 py-[7px] transition-colors",
-                      collapsed ? "justify-center px-0" : "px-3",
-                      active
-                        ? "bg-raised/50 text-ink"
-                        : "text-muted hover:bg-raised/25 hover:text-ink",
-                    )}
-                  >
-                    {active && (
-                      <span className="absolute inset-y-0 left-0 w-[2px] bg-accent" />
-                    )}
-                    <NavIcon
-                      id={item.icon}
-                      className={cx(
-                        "size-4 shrink-0 transition-colors",
-                        active ? "text-accent" : "text-dim group-hover:text-muted",
-                      )}
-                    />
-                    {!collapsed && (
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[12.5px] tracking-wide">
-                            {item.label}
-                          </span>
-                          <span
+      {SECTIONS.map((section) => {
+        const open = isOpen(section);
+        return (
+          <div key={section.key} className="py-0.5">
+            {section.kind === "desk" && (
+              <DeskHeader
+                section={section}
+                open={open}
+                collapsed={collapsed}
+                onToggle={() =>
+                  setManual((m) => ({ ...m, [section.key]: !open }))
+                }
+              />
+            )}
+            {(open || collapsed) &&
+              section.groups.map((group) => (
+                <div key={group.key} className="pb-1.5">
+                  {!collapsed && section.kind === "desk" && (
+                    <div className="flex items-baseline gap-1.5 px-3 pt-1 pb-0.5 pl-[26px]">
+                      <span className="text-[9px] uppercase tracking-[0.18em] text-dim/70">
+                        {group.label}
+                      </span>
+                    </div>
+                  )}
+                  {!collapsed && section.kind === "firm" && (
+                    <div className="flex items-baseline gap-1.5 px-3 py-1">
+                      <span className="micro text-dim">{group.label}</span>
+                      <span className="text-[9.5px] lowercase tracking-wide text-dim/70">
+                        · {group.sub}
+                      </span>
+                    </div>
+                  )}
+                  <ul>
+                    {group.items.map((item) => {
+                      const active = isNavActive(path, item.href);
+                      return (
+                        <li key={item.key} className="relative">
+                          <Link
+                            href={item.href}
+                            title={collapsed ? `${item.label} — ${item.hint}` : item.hint}
+                            onClick={onNavigate}
+                            aria-current={active ? "page" : undefined}
                             className={cx(
-                              "micro shrink-0",
-                              active ? "text-accent" : "text-dim/70",
+                              "group relative flex items-center gap-2.5 py-[7px] transition-colors",
+                              collapsed ? "justify-center px-0" : "px-3",
+                              !collapsed && section.kind === "desk" && "pl-[26px]",
+                              active
+                                ? "bg-raised/50 text-ink"
+                                : "text-muted hover:bg-raised/25 hover:text-ink",
+                              item.unbuilt && !active && "text-dim",
                             )}
                           >
-                            {navIndex(item)}
-                          </span>
-                        </span>
-                        {/* The active screen explains itself in place — one line
-                            of purpose text under the label, only where you are.
-                            This is what makes the rail self-teaching without
-                            adding noise to the other twelve rows. */}
-                        {active && (
-                          <span className="mt-0.5 block text-[10px] leading-snug text-muted/80">
-                            {item.hint}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    <Badge item={item} collapsed={collapsed} />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                            {active && (
+                              <span className="absolute inset-y-0 left-0 w-[2px] bg-accent" />
+                            )}
+                            <NavIcon
+                              id={item.icon}
+                              className={cx(
+                                "size-4 shrink-0 transition-colors",
+                                active ? "text-accent" : "text-dim group-hover:text-muted",
+                              )}
+                            />
+                            {!collapsed && (
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="min-w-0 flex-1 truncate text-[12.5px] tracking-wide">
+                                    {item.label}
+                                  </span>
+                                  <span
+                                    className={cx(
+                                      "micro shrink-0",
+                                      active ? "text-accent" : "text-dim/70",
+                                    )}
+                                  >
+                                    {navIndex(item)}
+                                  </span>
+                                </span>
+                                {/* The active screen explains itself in place — one
+                                    line of purpose text under the label, only where
+                                    you are. This is what makes the rail
+                                    self-teaching without adding noise to the other
+                                    rows. */}
+                                {active && (
+                                  <span className="mt-0.5 block text-[10px] leading-snug text-muted/80">
+                                    {item.hint}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            <Badge item={item} collapsed={collapsed} />
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -467,7 +565,9 @@ function TopBar({
       {/* Where am I — group / screen, straight from the nav model. */}
       {loc && (
         <div className="hidden items-baseline gap-1.5 lg:flex" aria-label="Breadcrumb">
-          <span className="micro text-dim">{loc.group.label}</span>
+          <span className="micro text-dim">
+            {loc.section.kind === "desk" ? loc.section.label : loc.group.label}
+          </span>
           <span className="micro text-dim">∕</span>
           <span className="micro text-accent">{loc.item.label.toUpperCase()}</span>
         </div>

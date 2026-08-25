@@ -1,29 +1,35 @@
-# Local infrastructure.
+# Local infrastructure for Meridian.
 #
-# Deliberately minimal. DESIGN.md §2 targets $0/month and a single box; this is
-# the local development equivalent — one service, no orchestration, no volumes
-# outside the project directory.
+# Deliberately minimal: one database, plus the one service that genuinely cannot
+# run on the host. DESIGN.md §2 targets $0/month on a single box and this is that
+# box's floor.
 #
-# Note what is NOT here: the dashboard and the recorder both run outside Docker,
-# on purpose. The recorder must keep capturing even when Docker is not running
-# (that is why it writes files), and the dashboard must keep rendering. Postgres
-# is the *analytical* store — the recorder's JSONL imports into it, and the
-# backtester reads from it. Nothing in the live path blocks on it being up.
+# Note what is NOT here. The console and the Asset Markets loop both run outside
+# Docker on purpose — the recorder must keep capturing when Docker is down (which
+# is why it writes files first), and the console must keep rendering. Postgres is
+# the analytical store: the recorder's JSONL imports into it, the backtester reads
+# from it, and the Event Markets engine writes to it. Nothing in the live path
+# blocks on it being up.
 #
-#   docker compose up -d      start
-#   pnpm db:migrate           create the schema
-#   pnpm db:import            replay recordings into hypertables
-#   pnpm db:status            what is loaded
+#   docker compose up -d           start the database (and the events engine)
+#   pnpm db:migrate                create both desks' schemas
+#   pnpm db:import                 replay recordings into hypertables
+#   pnpm db:status                 what is loaded
+#
+# The events engine is profiled off by default because it is only useful once a
+# bookmaker feed is configured:
+#
+#   docker compose --profile events up -d
 
 services:
   timescale:
     image: timescale/timescaledb:latest-pg17
-    container_name: ai-trader-db
+    container_name: meridian-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: trader
       POSTGRES_PASSWORD: trader
-      POSTGRES_DB: aitrader
+      POSTGRES_DB: meridian
       # Timescale tuning is skipped intentionally: at our data volume the
       # defaults are comfortably sufficient, and a tuned config that nobody
       # understands is a liability rather than an optimisation.
@@ -35,10 +41,33 @@ services:
     volumes:
       - timescale-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trader -d aitrader"]
+      test: ["CMD-SHELL", "pg_isready -U trader -d meridian"]
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # ------------------------------------------------------------ event markets
+  #
+  # The bookmaker and prediction-market side. Python rather than TypeScript
+  # because that is what it was built in, and it stays a separate process for the
+  # same reason the trading loop does: a scanner that dies should not take the
+  # console with it. It writes to the `events` schema; the console reads it.
+  events-engine:
+    profiles: ["events"]
+    build:
+      context: ./services/events-engine
+    container_name: meridian-events
+    restart: unless-stopped
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      DB_URL: postgresql://trader:trader@timescale:5432/meridian
+      STATE_BACKEND: memory
+      # Alerts stay logged rather than sent until a bot token exists.
+      ODDSENGINE_DRY_RUN: "true"
+    volumes:
+      - ./services/events-engine/config:/app/config:ro
 
 volumes:
   timescale-data:

@@ -23,6 +23,7 @@ import type { CapitalEvent, FundAccount } from "@/lib/fund/ledger";
 import type { ScoredOpportunity } from "@/lib/engine/scanner";
 import type { MarketSnapshot } from "@/lib/market/types";
 import { TierLadder } from "@/components/ladder";
+import { DeskStrip } from "@/components/desk-strip";
 import { cx, Delta, Micro, Num, Panel, Stat, StatusDot, Tag } from "@/components/ui";
 
 /* ------------------------------------------------------------- response types */
@@ -138,6 +139,15 @@ export default function CommandCenter() {
       />
 
       <MachineryStrip />
+
+      {/* ====================================================== the desks */}
+      <DeskStrip
+        assetNavUsd={fund ? nav : null}
+        assetLiveStrategies={tier.liveStrategies.length}
+        assetOpenPositions={fund?.accounts.reduce((a, x) => a + x.openPositions, 0) ?? 0}
+        assetScanning={cryptoOpps.length + fxSignals.length}
+        halted={halted}
+      />
 
       {/* ============================================================ hero */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">

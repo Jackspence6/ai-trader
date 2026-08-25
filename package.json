@@ -1,5 +1,5 @@
 {
-  "name": "ai-trader",
+  "name": "meridian",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
@@ -23,9 +23,15 @@
     "halt:deadman": "tsx scripts/halt.ts deadman",
     "halt:server": "tsx scripts/halt-server.ts",
     "trade": "tsx scripts/trade.ts",
-    "trade:once": "tsx scripts/trade.ts --once"
+    "trade:once": "tsx scripts/trade.ts --once",
+    "gen:migrations": "node scripts/gen-migrations.mjs",
+    "prebuild": "node scripts/gen-migrations.mjs",
+    "test:events": "node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/check-arb-parity.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-polymarket-parsing.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-consistency.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-scanner.mjs",
+    "test:engine": "python -m pytest services/events-engine/backend/tests -q",
+    "test:all": "vitest run && npm run test:events && npm run test:engine"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "next": "16.2.10",
     "pg": "^8.22.0",
     "react": "19.2.4",

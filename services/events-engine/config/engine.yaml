@@ -1,0 +1,67 @@
+# OddsEngine runtime config (spec §14.7). Secrets come from env / .env, never here.
+engine:
+  min_margin_pct: 1.0
+  min_executable_zar: 2000
+  kelly_fraction: 0.25
+  max_exposure_zar_per_event: 20000
+  max_exposure_zar_daily: 100000
+  max_usd_exposure: 2000
+  total_stake_default_zar: 10000
+  stake_rounding_zar: [50, 10]
+  same_venue_arbs: true          # emitted but scored down hard (palpable-error risk)
+
+scoring_weights:
+  margin: 0.30
+  executable_size: 0.15
+  window_duration: 0.15
+  venue_softness: 0.10
+  rule_risk: 0.10
+  account_safety: 0.10
+  fx_risk: 0.05
+  resolution_risk: 0.05
+
+polling:
+  default_interval_s: 20
+  near_kickoff_interval_s: 5
+  near_kickoff_window_min: 60
+  jitter_frac: 0.25
+
+staleness:
+  max_age_factor: 2.5
+  sweep_interval_s: 10
+  frozen_peer_moves: 5
+
+polymarket:
+  gamma_url: https://gamma-api.polymarket.com
+  clob_url: https://clob.polymarket.com
+  ws_url: wss://ws-subscriptions-clob.polymarket.com/ws/
+  read_fee_rate_live: true       # ALWAYS prefer live /fee-rate over the docs table
+  slippage_bps: 50
+  sports_tags: [sports, nba, nfl, soccer, epl, tennis]
+
+fx:
+  pair: USDZAR
+  buffer_pct: 2.0
+  fallback_rate: 18.0            # last-resort only; live refresh overrides
+  refresh_s: 60
+  provider_url: https://open.er-api.com/v6/latest/USD
+
+matching:
+  auto_accept: 0.92
+  review_min: 0.75
+  start_tolerance_min: 15
+  pm_start_tolerance_min: 240
+
+alerts:
+  dry_run: true                  # Phase 1 default; set TELEGRAM_BOT_TOKEN + channel to go live
+  min_score: 0
+  resend_margin_improvement_pp: 0.5
+
+window_priors:
+  pre_match: 600
+  near_kickoff: 120
+  live: 4                        # ~3.6s median in-game (arXiv 2605.00864) — measure-only
+
+kill_switch: false
+state_backend: memory            # memory | redis  (compose sets redis via env)
+log_level: INFO

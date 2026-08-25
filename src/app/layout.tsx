@@ -17,8 +17,8 @@ const jb = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Meridian — autonomous trading",
-  description: "Autonomous crypto trading platform",
+  title: "Meridian",
+  description: "Systematic multi-strategy capital — asset markets and event markets",
 };
 
 export default function RootLayout({

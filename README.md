@@ -1,82 +1,120 @@
-# Meridian — autonomous trading platform
+# Meridian — systematic multi-strategy capital
 
-A self-hosted, self-improving trading system. It scans live markets across
-four crypto venues and seven FX pairs, scores every opportunity through a
-tested cost and risk model, paper-trades what survives, manages exits,
-tracks P&L to the cent — and **grades its own decisions so it stops
-repeating mistakes**.
+One firm, two desks, one book. Meridian looks for structural mispricings across
+venues and takes them only where the evidence says they exist. Some of those
+venues price **assets** — perpetual futures, currency pairs. Others price
+**events** — match outcomes, prediction-market contracts. The discipline is the
+same on both: measure honestly, cost pessimistically, size by evidence, and grade
+yourself afterwards.
 
-Everything is real except the money: live prices, live funding, real fills
-against a pessimistic simulated venue, real P&L attribution. Paper first,
+Everything is real except the money. Live prices, live funding, live odds, real
+fills against a pessimistic simulated venue, real P&L attribution. Paper first,
 by design — capital unlocks only through the evidence ladder.
+
+```
+FIRM            Overview · Performance · Treasury · Risk · System
+ASSET MARKETS   Markets · Opportunities · Positions · Strategies ·
+                Portfolios · Exchanges · Parameters · Research     (books in USD)
+EVENT MARKETS   Board · Books · Strategies · Promotions ·
+                Parameters · Research                              (books in ZAR)
+```
+
+Both desks use the same words for the same ideas, so learning one teaches you
+most of the other. ⌘K opens the command palette, grouped by desk.
 
 ## Run it
 
 ```sh
-pnpm dev                        # dashboard on :3000 (password in .env.local)
-pnpm trade -- --interval 300    # the always-on trading loop (one instance!)
-pnpm record                     # the market-data recorder
-docker compose up -d            # Postgres/Timescale (NAV history, tier ladder)
-pnpm test · pnpm lint · pnpm build
+pnpm dev                          # the console on :3000 (SITE_PASSWORD in .env.local)
+docker compose up -d              # Postgres/Timescale — both desks' schemas
+pnpm db:migrate                   # create them
+
+pnpm trade -- --interval 300      # Asset Markets loop (one instance only)
+pnpm record                       # market-data recorder
+docker compose --profile events up -d   # Event Markets engine
+
+pnpm test:all                     # 451 vitest · 73 events checks · 137 pytest
 ```
 
-Restart the loop after any engine change — it loads code once. Kill with
-`pgrep -f "scripts/trade.ts" | xargs kill -9` and verify exactly one leaf
-process remains (`ps ax | grep preflight.*trade`).
+Restart the trading loop after any engine change — it loads code once. Kill with
+`pgrep -f "scripts/trade.ts" | xargs kill -9` and verify exactly one leaf process
+remains.
 
-## How it decides (the evidence hierarchy)
+## Asset Markets — crypto and FX
 
-Every strategy is backtested on real history with the live signal code and
-honest costs, and **capital sits exactly where the evidence points**:
+Four crypto venues and seven FX pairs, scored through a tested cost and risk
+model, paper-traded, exits managed, P&L tracked to the cent. Capital sits exactly
+where the backtests point:
 
 | Strategy | Verdict | Allocation |
 |---|---|---|
 | F1 FX carry | Earns (+4.3%/3y, Sharpe 0.62, both components positive) | $3,500 |
-| L1 crypto funding carry | Breakeven at taker; positive at maker; stable parameter plateau | $6,000 (core) |
+| L1 crypto funding carry | Breakeven at taker; positive at maker; stable plateau | $6,000 (core) |
 | L3 stablecoin peg | Near-riskless when it fires; silent otherwise | core |
-| L2 cross-venue spread | Structurally negative (spread mean-reverts in ~1 day) | scored, not sized |
+| L2 cross-venue spread | Structurally negative (mean-reverts in ~1 day) | scored, not sized |
 | F2 FX trend | Negative in all 12 parameter cells | defunded, scored in shadow |
 
-## The machine learning (free, self-improving)
+A small deterministic funding-persistence model annotates carry entries. It is
+trained on free history, walk-forward validated, graded live against what funding
+actually did, and starts in SHADOW — promoted only when its matured record beats
+the baseline, demoted automatically when its edge decays. It never generates a
+trade.
 
-`lib/ml/` — a deliberately small, deterministic funding-persistence model:
+## Event Markets — sportsbooks and prediction markets
 
-1. **Trained** on free Binance funding history, retrained every pass.
-2. **Walk-forward validated** (beats the median-rule baseline out-of-sample:
-   89.9% vs 87.4% precision when confident).
-3. **Graded live**: every prediction is written to a permanent ledger and
-   scored 7 days later against what funding actually did — including the
-   counterfactuals (trades it would have rejected that then earned).
-4. **Autonomy is earned**: the model starts in SHADOW. When its matured live
-   record beats the baseline over 40+ samples it is promoted to CONFIRMING
-   and may *veto* weak carry entries; if its edge decays it is demoted
-   automatically. It never generates a trade (DESIGN.md principle 7).
+Cross-venue arbitrage and promotional hedging, in rand. This desk holds no live
+capital and the Strategies screen says so in five places rather than implying
+otherwise:
 
-## Screens
+| Edge | Standing | What the measurement said |
+|---|---|---|
+| E1 Promotional hedging | READY | The only positive measured edge. R2,000 of capital clears ~R683 of EV in ~2 weeks |
+| E2 Cross-book arbitrage | MEASURING | 197 live markets across two books, zero arbitrage, best gap −1.3% |
+| E3 Book vs prediction | NOT MEASURED | Both sides tested, never pointed at each other |
+| E4 Prediction internal | SCORED | 440 markets, zero arbitrage, books ~0.1% inside the line. A validated negative |
+| E5 Placement | NOT BUILT | Nothing placed yet, so capture rate has no data |
 
-Overview · Markets · Performance (P&L attribution) · Opportunities (every
-decision with its reason, incl. the model's persistence column) ·
-Positions · Strategies · Allocation · Exchanges · Parameters · Risk ·
-Treasury · Backtests (all verdicts, sweeps, the model's live record) ·
-System (loop health, recorder). ⌘K opens the command palette.
+Two books are integrated (Sunbet on Kambi, Betway SA on Betradar) plus Polymarket.
+Public odds endpoints only: no login, account, balance or placement call is ever
+made, and no bet is ever placed automatically.
 
-## What's free vs what will cost money later
+## What is honest about the empty states
 
-**Free forever (current):** all market data (Binance/Bybit/OKX/Hyperliquid
-public APIs, Frankfurter ECB fixes), the ML (local, dependency-free),
-Postgres in Docker, the dashboard.
+A blank board and a dead scanner look identical if you only draw an empty table,
+and they need opposite responses. So they are drawn differently — "SCANNING · NO
+ARBITRAGE OPEN" is a measurement, "NOTHING IS SCANNING" is a fault. Simulated data
+exists for demonstrations and is off unless `NEXT_PUBLIC_DEMO=1`, in which case the
+board watermarks itself.
 
-**Planned spend, when the evidence justifies it:**
-- Claude API regime classifier (~$1/mo, Haiku) — risk multipliers, never orders
-- Telegram alerts (free, needs a bot token — ask when wanted)
-- Exchange accounts + API keys (free; needed for live micro-positions)
-- Maker-fee tiers / Tokyo VPS ($5–12/mo) — only after live edge is proven
+## What is free and what will cost money
+
+**Free now:** all market data (Binance/Bybit/OKX/Hyperliquid public APIs,
+Frankfurter ECB fixes, Kambi and Betradar public odds, Polymarket CLOB), the ML
+(local, dependency-free), Postgres in Docker, the console.
+
+**Planned spend, when the evidence justifies it:** exchange accounts and API keys
+(free, needed for live micro-positions), bookmaker accounts (needed for E1),
+Telegram alerts (free, needs a bot token), maker-fee tiers or a VPS ($5–12/mo) —
+only after live edge is proven.
+
+## Layout
+
+```
+src/app            the console — firm screens, /markets…, /events/…
+src/lib/events     the Event Markets library (arb math, fees, promos, capital)
+src/lib/*          the Asset Markets engine, ML, OMS, portfolio, recorder
+services/events-engine   the Python odds engine (ingest, match, detect, alert)
+db/migrations      both desks, `events` namespaced into its own schema
+scripts/events     cross-language parity harness — TS must match Python exactly
+```
 
 ## Docs
 
 - `DESIGN.md` — architecture and principles (the honest economics up front)
 - `STRATEGY.md` — what we trade and why
 - `ROADMAP.md` — done / in flight / next, with dated findings
-- `ML.md` — the machine-learning plan: what to build, costs, who does what
-- `GOVERNANCE.md` — the multi-portfolio operating charter: caps, isolation, promotion
+- `ML.md` — the machine-learning plan
+- `GOVERNANCE.md` — the multi-portfolio charter: caps, isolation, promotion
 - `EXPANSION.md` — venue and strategy expansion notes
+- `services/events-engine/ops/runbook.md` — bookmaker endpoint discovery
+- `services/events-engine/backend/oddsengine/venues/*/discovery.md` — per-book capture records

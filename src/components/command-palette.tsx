@@ -17,7 +17,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ALL_NAV_ITEMS, navIndex } from "@/lib/nav";
+import { ALL_NAV_ITEMS, SECTIONS, navIndex } from "@/lib/nav";
 import { NavIcon } from "./nav-icons";
 import { cx } from "./ui";
 
@@ -25,7 +25,8 @@ type Command = {
   id: string;
   title: string;
   hint: string;
-  section: "SCREENS" | "ACTIONS";
+  /** Palette heading this command sits under: a desk name, or ACTIONS. */
+  section: string;
   icon?: string;
   index?: string;
   /** Extra text the matcher may hit (aliases, href). */
@@ -103,16 +104,24 @@ function PaletteOpen({ onClose }: { onClose: () => void }) {
   };
 
   const commands = useMemo<Command[]>(() => {
-    const screens: Command[] = ALL_NAV_ITEMS.map((item) => ({
-      id: `nav:${item.key}`,
-      title: item.label,
-      hint: item.hint,
-      section: "SCREENS",
-      icon: item.icon,
-      index: navIndex(item),
-      haystack: `${item.label} ${item.href} ${(item.aliases ?? []).join(" ")}`,
-      run: () => router.push(item.href),
-    }));
+    // Screens are grouped by desk rather than listed flat. Two desks share a
+    // vocabulary — both have Strategies, Research and Parameters — so a flat
+    // list would show the same word twice with no way to tell which book you
+    // were about to open.
+    const screens: Command[] = SECTIONS.flatMap((section) =>
+      section.groups.flatMap((group) =>
+        group.items.map((item) => ({
+          id: `nav:${item.key}`,
+          title: item.label,
+          hint: item.hint,
+          section: section.label,
+          icon: item.icon,
+          index: navIndex(item),
+          haystack: `${item.label} ${item.href} ${section.label} ${section.sub} ${(item.aliases ?? []).join(" ")}`,
+          run: () => router.push(item.href),
+        })),
+      ),
+    );
     const actions: Command[] = [
       {
         id: "act:halt",

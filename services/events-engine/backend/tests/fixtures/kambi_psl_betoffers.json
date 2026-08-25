@@ -1,0 +1,131 @@
+{
+  "_source": "eu.offering-api.kambicdn.com /offering/v2018/siwc/betoffer/event/1028561551.json — live capture 2026-08-25, trimmed to the offers that matter for mapping",
+  "events": [
+    {
+      "id": 1028561551,
+      "name": "Siwelele F.C. - Chippa United",
+      "englishName": "Siwelele F.C. - Chippa United",
+      "homeName": "Siwelele F.C.",
+      "awayName": "Chippa United",
+      "start": "2026-08-25T17:30:00Z",
+      "state": "NOT_STARTED",
+      "group": "PSL",
+      "groupId": 1000250636,
+      "sport": "FOOTBALL",
+      "path": [
+        {"id": 1000093190, "name": "Soccer", "englishName": "Football", "termKey": "football"},
+        {"id": 1000461803, "name": "South Africa", "englishName": "South Africa", "termKey": "south_africa"},
+        {"id": 1000250636, "name": "PSL", "englishName": "PSL", "termKey": "psl"}
+      ]
+    }
+  ],
+  "betOffers": [
+    {
+      "id": 2683078519, "eventId": 1028561551,
+      "betOfferType": {"id": 2, "name": "Match", "englishName": "Match"},
+      "criterion": {"id": 1001159858, "label": "Full Time", "englishLabel": "Full Time", "occurrenceType": "GOALS", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306997877, "label": "1", "englishLabel": "1", "type": "OT_ONE", "odds": 1960, "status": "OPEN", "participant": "Siwelele F.C.", "betOfferId": 2683078519},
+        {"id": 4306997878, "label": "X", "englishLabel": "X", "type": "OT_CROSS", "odds": 3300, "status": "OPEN", "betOfferId": 2683078519},
+        {"id": 4306997879, "label": "2", "englishLabel": "2", "type": "OT_TWO", "odds": 4000, "status": "OPEN", "participant": "Chippa United", "betOfferId": 2683078519}
+      ]
+    },
+    {
+      "id": 2683078600, "eventId": 1028561551,
+      "betOfferType": {"id": 6, "name": "Over/Under", "englishName": "Over/Under"},
+      "criterion": {"id": 1001159926, "label": "Total Goals", "englishLabel": "Total Goals", "occurrenceType": "GOALS", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998001, "label": "Over", "englishLabel": "Over", "type": "OT_OVER", "odds": 1380, "line": 1500, "status": "OPEN", "betOfferId": 2683078600},
+        {"id": 4306998002, "label": "Under", "englishLabel": "Under", "type": "OT_UNDER", "odds": 2750, "line": 1500, "status": "OPEN", "betOfferId": 2683078600}
+      ]
+    },
+    {
+      "id": 2683078601, "eventId": 1028561551,
+      "betOfferType": {"id": 6, "name": "Over/Under", "englishName": "Over/Under"},
+      "criterion": {"id": 1001159926, "label": "Total Goals", "englishLabel": "Total Goals", "occurrenceType": "GOALS", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998003, "label": "Over", "englishLabel": "Over", "type": "OT_OVER", "odds": 3950, "line": 3500, "status": "OPEN", "betOfferId": 2683078601},
+        {"id": 4306998004, "label": "Under", "englishLabel": "Under", "type": "OT_UNDER", "odds": 1190, "line": 3500, "status": "OPEN", "betOfferId": 2683078601}
+      ]
+    },
+    {
+      "id": 2683078700, "eventId": 1028561551,
+      "betOfferType": {"id": 1, "name": "Handicap", "englishName": "Handicap"},
+      "criterion": {"id": 1001159880, "label": "Handicap", "englishLabel": "Handicap", "occurrenceType": "GOALS", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998100, "label": "Siwelele F.C.", "englishLabel": "Siwelele F.C.", "type": "OT_ONE", "odds": 1870, "line": -500, "status": "OPEN", "betOfferId": 2683078700},
+        {"id": 4306998101, "label": "Chippa United", "englishLabel": "Chippa United", "type": "OT_TWO", "odds": 1800, "line": 500, "status": "OPEN", "betOfferId": 2683078700}
+      ]
+    },
+    {
+      "id": 2683078800, "eventId": 1028561551,
+      "betOfferType": {"id": 18, "name": "Yes/No", "englishName": "Yes/No"},
+      "criterion": {"id": 1001159999, "label": "Both Teams To Score", "englishLabel": "Both Teams To Score"},
+      "outcomes": [
+        {"id": 4306998200, "label": "Yes", "englishLabel": "Yes", "type": "OT_YES", "odds": 1750, "status": "OPEN", "betOfferId": 2683078800},
+        {"id": 4306998201, "label": "No", "englishLabel": "No", "type": "OT_NO", "odds": 1950, "status": "OPEN", "betOfferId": 2683078800}
+      ]
+    },
+
+    {
+      "_trap": "same betOfferType and lifetime as Total Goals, different occurrence — must NOT map",
+      "id": 2683078901, "eventId": 1028561551,
+      "betOfferType": {"id": 6, "name": "Over/Under", "englishName": "Over/Under"},
+      "criterion": {"id": 1001160100, "label": "Total Corners", "englishLabel": "Total Corners", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998300, "label": "Over", "type": "OT_OVER", "odds": 1900, "line": 9500, "status": "OPEN"},
+        {"id": 4306998301, "label": "Under", "type": "OT_UNDER", "odds": 1850, "line": 9500, "status": "OPEN"}
+      ]
+    },
+    {
+      "_trap": "team total, FULL_TIME, contains the substring 'Total Goals' — must NOT map",
+      "id": 2683078902, "eventId": 1028561551,
+      "betOfferType": {"id": 6, "name": "Over/Under", "englishName": "Over/Under"},
+      "criterion": {"id": 1001160101, "label": "Total Goals by Chippa United", "englishLabel": "Total Goals by Chippa United", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998400, "label": "Over", "type": "OT_OVER", "odds": 2100, "line": 1500, "status": "OPEN"},
+        {"id": 4306998401, "label": "Under", "type": "OT_UNDER", "odds": 1650, "line": 1500, "status": "OPEN"}
+      ]
+    },
+    {
+      "_trap": "half market — must NOT map",
+      "id": 2683078903, "eventId": 1028561551,
+      "betOfferType": {"id": 6, "name": "Over/Under", "englishName": "Over/Under"},
+      "criterion": {"id": 1001160102, "label": "Total Goals - 1st Half", "englishLabel": "Total Goals - 1st Half", "occurrenceType": "GOALS"},
+      "outcomes": [
+        {"id": 4306998500, "label": "Over", "type": "OT_OVER", "odds": 2400, "line": 500, "status": "OPEN"},
+        {"id": 4306998501, "label": "Under", "type": "OT_UNDER", "odds": 1550, "line": 500, "status": "OPEN"}
+      ]
+    },
+    {
+      "_trap": "betOfferType 2 like Full Time, but a 2nd-half DNB — must NOT map",
+      "id": 2683078904, "eventId": 1028561551,
+      "betOfferType": {"id": 2, "name": "Match", "englishName": "Match"},
+      "criterion": {"id": 1001160103, "label": "Draw No Bet - 2nd Half", "englishLabel": "Draw No Bet - 2nd Half", "occurrenceType": "GOALS"},
+      "outcomes": [
+        {"id": 4306998600, "label": "Siwelele F.C.", "type": "OT_ONE", "odds": 2050, "status": "OPEN"},
+        {"id": 4306998601, "label": "Chippa United", "type": "OT_TWO", "odds": 1720, "status": "OPEN"}
+      ]
+    },
+    {
+      "_trap": "half BTTS — same type and null lifetime as the real BTTS, different label",
+      "id": 2683078905, "eventId": 1028561551,
+      "betOfferType": {"id": 18, "name": "Yes/No", "englishName": "Yes/No"},
+      "criterion": {"id": 1001160104, "label": "Both Teams To Score - 1st Half", "englishLabel": "Both Teams To Score - 1st Half"},
+      "outcomes": [
+        {"id": 4306998700, "label": "Yes", "type": "OT_YES", "odds": 4200, "status": "OPEN"},
+        {"id": 4306998701, "label": "No", "type": "OT_NO", "odds": 1220, "status": "OPEN"}
+      ]
+    },
+    {
+      "_trap": "suspended outcome inside a mapped market — priced quotes must skip it",
+      "id": 2683078906, "eventId": 1028561551,
+      "betOfferType": {"id": 2, "name": "Match", "englishName": "Match"},
+      "criterion": {"id": 1001160105, "label": "Draw No Bet", "englishLabel": "Draw No Bet", "occurrenceType": "GOALS", "lifetime": "FULL_TIME"},
+      "outcomes": [
+        {"id": 4306998800, "label": "Siwelele F.C.", "type": "OT_ONE", "odds": 1330, "status": "OPEN"},
+        {"id": 4306998801, "label": "Chippa United", "type": "OT_TWO", "odds": 3200, "status": "SUSPENDED"}
+      ]
+    }
+  ]
+}

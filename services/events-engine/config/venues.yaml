@@ -1,0 +1,74 @@
+# Venue roster. SA books ship DISABLED until their endpoints are discovered via the
+# DevTools/HAR procedure (ops/runbook.md) — the engine never fabricates endpoints.
+# softness: prior 0 (sharp) .. 1 (soft); learned from update history later (spec §13).
+
+venues:
+  polymarket:
+    kind: prediction_market
+    enabled: true
+    currency: USD
+    softness: 0.10               # sharp, deep, fast — usually the second leg
+    notes: >
+      Read-only Phase 1. Geoblocked from US IPs — egress from SA is fine.
+      Fees read live from CLOB /fee-rate per market (docs table is fallback only).
+
+  betway_sa:
+    kind: bookie
+    enabled: true                # DISCOVERED 2026-08-25 from an SA IP
+    currency: ZAR
+    softness: 0.45
+    min_interval_s: 20
+    max_stake_default_zar: 20000
+    endpoints:
+      highlights_url: "https://www.betway.co.za/sportsapi/br/v1/BetBook/Highlights/"
+      country_code: "ZA"
+      culture_code: "en-US"
+      take: 100
+    notes: >
+      Betradar ("emop") feed served through Betway's own same-origin proxy at
+      /sportsapi/br/v1/. One request returns the whole board as flat events /
+      markets / outcomes / prices arrays. No auth — it answers with cookies
+      omitted. Captured live 2026-08-25 (venues/betway/discovery.md).
+      CAVEAT: www.betway.co.za sits behind Akamai bot management. The capture was
+      made in a real browser; server-side reachability is unproven. If the adapter
+      quarantines with 403s, that is the WAF, and the fallback is the Playwright
+      network tap in venues/skeleton.py — not evasion.
+
+  hollywoodbets:
+    kind: bookie
+    enabled: false
+    currency: ZAR
+    softness: 0.60
+    min_interval_s: 30           # Cloudflare + reCAPTCHA confirmed: slower, gentler
+    max_stake_default_zar: 10000
+    endpoints: {}                # httpx endpoints or xhr_pattern for the Playwright tap
+    notes: "BET Software/SyX (Elixir). Cloudflare + reCAPTCHA confirmed. Playwright fallback."
+
+  supabets:
+    kind: bookie
+    enabled: false
+    currency: ZAR
+    softness: 0.65
+    min_interval_s: 20
+    max_stake_default_zar: 10000
+    endpoints: {}
+    notes: "WA.Technology confirmed (OpticOdds data). WA.Platform SPA JSON expected."
+
+  sunbet:
+    kind: bookie
+    enabled: true                # DISCOVERED 2026-08-25 from an SA IP — see below
+    currency: ZAR
+    softness: 0.55
+    min_interval_s: 15
+    max_stake_default_zar: 10000
+    deep_link_template: "https://www.sunbet.co.za/en/sports#/event/{event_ref}"
+    endpoints:
+      kambi_base: "https://eu.offering-api.kambicdn.com"
+      kambi_operator: "siwc"
+      kambi_params: "channel_id=1&client_id=200&lang=en_ZA&market=ZA"
+    notes: >
+      Kambi offering API, reached through the Shape Games front end at
+      sunbet.co.za/en/sports. Operator code "siwc" and host eu.offering-api.kambicdn.com
+      captured live from a South African IP on 2026-08-25 (venues/sunbet/discovery.md).
+      Public odds endpoints only — no account or login calls. Live book at capture:
+      263 football, 252 tennis, 183 American football, 57 table tennis events.
