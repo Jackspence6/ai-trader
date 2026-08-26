@@ -22,7 +22,13 @@ if (!existsSync(src)) {
 
 const files = readdirSync(src).filter((f) => f.endsWith(".sql")).sort();
 const entries = files.map((f) => {
-  const sql = readFileSync(path.join(src, f), "utf8");
+  // Normalise line endings before embedding. A CRLF checkout on Windows would
+  // otherwise emit \r\n here, so this generated file - which is committed -
+  // would differ per platform. That dirties the tree after every build, and
+  // scripts/update.mjs refuses to pull into a dirty tree, so the box silently
+  // stops updating. Doing it here rather than relying only on .gitattributes
+  // means an editor that saves CRLF cannot reintroduce it either.
+  const sql = readFileSync(path.join(src, f), "utf8").replace(/\r\n/g, "\n");
   return `  { name: ${JSON.stringify(f)}, sql: ${JSON.stringify(sql)} },`;
 });
 

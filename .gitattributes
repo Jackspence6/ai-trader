@@ -1,0 +1,34 @@
+# Line endings are normalised to LF in the repository and in the working tree
+# on every platform, Windows included.
+#
+# This is not cosmetic. scripts/gen-migrations.mjs embeds the bytes of the
+# db/*.sql files verbatim into src/lib/events/migrations.generated.ts, which is
+# tracked. With core.autocrlf=true and no rules here, Windows checks the .sql
+# files out as CRLF, the generator emits \r\n where macOS emitted \n, and the
+# generated file shows as modified immediately after every build.
+#
+# The consequence is worse than a noisy diff: scripts/update.mjs refuses to pull
+# into a dirty tree by design, so on a Windows box the self-updater silently
+# stops updating after the first build and only says so in a log line.
+
+* text=auto eol=lf
+
+# Explicit for the files that feed the generator.
+*.sql   text eol=lf
+*.ts    text eol=lf
+*.mjs   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+
+# PowerShell is happy with LF, and keeping it uniform means a script authored on
+# macOS is byte-identical on the deployment box.
+*.ps1   text eol=lf
+*.sh    text eol=lf
+
+# Never touch binaries.
+*.png   binary
+*.jpg   binary
+*.woff  binary
+*.woff2 binary
+*.ico   binary
+*.pdf   binary
