@@ -246,14 +246,17 @@ failure you cannot recover from later.
 
 ---
 
-## 11. Keeping it up
+## 11. Keeping it up, and keeping it current
 
 Once it is running and you have watched it for a while,
-[`DEPLOY.md`](../DEPLOY.md) has the systemd units for a Linux box that should
-come back on its own after a power cut.
+[running unattended](./always-on.md) turns it into a box you do not have to
+visit: services that come back after a power cut, and a timer that pulls `main`,
+rebuilds, runs the tests and restarts — so pushing a fix from another machine is
+all it takes.
 
-On Windows, the simplest equivalent is a scheduled task set to "run whether the
-user is logged on or not", one per process.
+[`DEPLOY.md`](../DEPLOY.md) has the systemd units. On Windows, the equivalent is
+a scheduled task set to "run whether the user is logged on or not", one per
+process, and `always-on.md` has the Task Scheduler command for the updater.
 
 ---
 

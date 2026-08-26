@@ -27,7 +27,9 @@ most of the other. ⌘K opens the command palette, grouped by desk.
 Deploying to a machine rather than developing on one? Start with
 [deploying on an old machine](docs/deploy-old-machine.md) — it assumes nothing
 is installed, covers Windows as well as Linux, and has a prebuilt bundle for a
-box that cannot afford to compile.
+box that cannot afford to compile. Then
+[running unattended](docs/always-on.md) makes it pull its own updates from
+`main`.
 
 ```sh
 pnpm dev                          # the console on :3000 (SITE_PASSWORD in .env.local)

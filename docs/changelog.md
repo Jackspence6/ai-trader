@@ -3,6 +3,27 @@
 What changed between the merge landing and the first machine it will run on,
 and why. Grouped by what it protects rather than by file.
 
+## The box runs itself
+
+**Auto-update from `main`.** A systemd timer checks every fifteen minutes;
+`scripts/update.mjs` pulls, installs, builds and runs the TypeScript suite —
+all while the old processes are still serving — and only restarts once the new
+version has proved itself. Any failure returns the checkout to the commit that
+is actually running, because a tree ahead of its processes is worse than an old
+one: everything works until the next unrelated restart, which then starts code
+that never built. It never touches the kill switch, never forces over local
+changes, and never edits `.env.local`. Documented in
+[`always-on.md`](./always-on.md).
+
+**The build dirtied the tree, which would have frozen updates after the first
+one.** Caught by testing the updater rather than reading it: first update clean,
+second update `SKIP: the working tree has local changes` — forever. `next build`
+rewrites `next-env.d.ts` to point at whichever distDir was just built, and that
+file had been made tracked earlier in this pass on a justification I asserted
+without testing (`tsc --noEmit` passes without it). It is ignored again, and the
+updater now names any tracked file the build modifies, which turns the failure
+mode that hides best into one line in the log.
+
 ## Bugs that would have shown up on the deployment machine
 
 **A failed poll waited a full interval before trying again.** Every screen polls
