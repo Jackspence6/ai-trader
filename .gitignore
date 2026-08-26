@@ -32,34 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# local engine state (config + audit log)
-/.data/
-
-# local dev server log
-dev.log
-
-# recorder log
-recorder.log
-
-# database volume is managed by docker compose
-
-# credential vault (encrypted, but never commit it)
-.data/credentials.json
-
-# kill-switch server log
-halt-server.log
-
-# paper trading book
-.data/paper/
-
-# runtime logs
-trade.log
-recorder.log
+# Python virtualenv for the events engine tests (see scripts/setup-engine.mjs)
+.venv/

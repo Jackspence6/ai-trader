@@ -43,9 +43,22 @@ docker compose --profile events up -d # Event Markets engine
 ## Verify it
 
 ```sh
-pnpm test:all      # 461 vitest · 73 event-desk checks · 137 pytest
+pnpm test:all      # 474 vitest · 73 event-desk checks · 137 pytest
 pnpm preflight     # 18 live checks against the real world
 ```
+
+`test:all` includes the Event Markets engine's Python suite, which needs the
+engine's packages installed on the host. `bootstrap.sh` does that; if you
+skipped it, or if `pnpm test:engine` tells you the packages are missing:
+
+```sh
+pnpm setup:engine  # venv at services/events-engine/backend/.venv, pinned versions
+```
+
+Nothing is installed into the machine's Python — the venv lives beside the
+engine and is gitignored. Version pins live in
+`services/events-engine/backend/constraints.txt`, so the tests run against the
+same tree the container does.
 
 `/gallery` renders every shared component in every state. It is not in the
 navigation — it is a workbench — but it is the fastest way to see whether a

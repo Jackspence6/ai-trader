@@ -39,3 +39,10 @@ ignore = ["E501", "B008"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "error::DeprecationWarning:oddsengine.*",
+    # Starlette's TestClient warns about httpx on import. It is a third-party
+    # notice about a test-only dependency, matched on its exact text so that a
+    # different starlette deprecation still surfaces.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated.*",
+]

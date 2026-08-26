@@ -33,7 +33,7 @@ pnpm trade -- --interval 300      # Asset Markets loop (one instance only)
 pnpm record                       # market-data recorder
 docker compose --profile events up -d   # Event Markets engine
 
-pnpm test:all                     # 451 vitest · 73 events checks · 137 pytest
+pnpm test:all                     # 474 vitest · 73 events checks · 137 pytest
 ```
 
 Restart the trading loop after any engine change — it loads code once. Kill with

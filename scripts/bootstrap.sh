@@ -71,6 +71,20 @@ else
   fi
 fi
 
+say "Events engine (Python)"
+# The engine runs in Docker, so this is only needed to run its tests on the
+# host. Not fatal: a box that cannot build a venv can still run the console and
+# the engine container.
+if ! command -v python3 >/dev/null 2>&1; then
+  no 'python3 missing — skipping. pnpm test:engine will not run here.'
+else
+  set +e
+  node scripts/setup-engine.mjs
+  ENGINE=$?
+  set -e
+  [ $ENGINE -eq 0 ] && ok "engine packages installed for testing" || no 'engine venv failed — pnpm test:engine will not run here'
+fi
+
 say "Build"
 # The webfonts are fetched at build time, so a box with no outbound network
 # fails here with a font error and nothing else useful. Rather than making that

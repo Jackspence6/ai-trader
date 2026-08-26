@@ -13,11 +13,14 @@ WORKDIR /app
 
 # Dependency install is its own layer so a code change does not re-resolve the
 # whole tree on every build.
-COPY backend/pyproject.toml ./backend/
-RUN pip install --no-cache-dir -e ./backend || true
+# constraints.txt pins the tree to the versions the engine's tests were run
+# against — without it the image can be built twice a week apart and behave
+# differently, with nothing in the diff to explain why.
+COPY backend/pyproject.toml backend/constraints.txt ./backend/
+RUN pip install --no-cache-dir -c ./backend/constraints.txt -e ./backend || true
 
 COPY backend ./backend
-RUN pip install --no-cache-dir -e ./backend
+RUN pip install --no-cache-dir -c ./backend/constraints.txt -e ./backend
 
 COPY config ./config
 
