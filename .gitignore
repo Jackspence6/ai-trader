@@ -17,9 +17,17 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 .vercel
 
-# next-env.d.ts is deliberately NOT ignored. Next regenerates it on build, but
-# a clean checkout should typecheck before anything is built, and tsconfig
-# includes it by name.
+# next-env.d.ts is generated, and tracking it was a mistake I made earlier in
+# this pass. Two reasons it is ignored again:
+#
+#   * `next build` rewrites it to point at whichever distDir was just built, so
+#     every build dirtied the working tree. The auto-updater refuses to pull
+#     over a dirty tree -- correctly -- which meant the deployment box would
+#     have updated once and then silently never again.
+#   * The justification for tracking it was that a clean checkout should
+#     typecheck before anything is built. That was asserted, not tested, and it
+#     is false: `tsc --noEmit` passes without the file.
+next-env.d.ts
 
 # Local runtime state: engine config, the credential vault (encrypted, but
 # never commit it), the paper book, and every log any of the processes write.

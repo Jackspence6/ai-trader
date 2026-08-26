@@ -269,7 +269,30 @@ function main() {
   }
 
   log(`updated to ${target.slice(0, 7)} and restarted`);
+  warnIfBuildDirtiedTheTree();
   return 0;
+}
+
+/**
+ * A build that writes to a tracked file freezes every future update.
+ *
+ * The dirty-tree guard above is right to refuse to pull over local changes, but
+ * it cannot tell a person's edit from a generated file the build rewrote. If
+ * the build is the one dirtying the tree, every subsequent round skips, and on
+ * an unattended box that is indistinguishable from working — it updated once
+ * and then quietly never again.
+ *
+ * This happened: `next build` rewrites next-env.d.ts, and it was tracked. The
+ * file is ignored now, so the cause is gone. This says so out loud if anything
+ * else ever starts doing it, which turns a silent stall into one line naming
+ * the file.
+ */
+function warnIfBuildDirtiedTheTree() {
+  const dirty = git("status", "--porcelain").out;
+  if (!dirty) return;
+  log("WARN: the build modified tracked files, which will block the NEXT update:");
+  for (const line of dirty.split("\n").slice(0, 10)) log(`      ${line}`);
+  log("      Add them to .gitignore and untrack them, or updates stop here.");
 }
 
 if (!acquireLock()) process.exit(0);
