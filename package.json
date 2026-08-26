@@ -28,10 +28,14 @@
     "prebuild": "node scripts/gen-migrations.mjs",
     "test:events": "node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/check-arb-parity.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-polymarket-parsing.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-consistency.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-scanner.mjs",
     "test:engine": "python -m pytest services/events-engine/backend/tests -q",
-    "test:all": "vitest run && npm run test:events && npm run test:engine"
+    "test:all": "vitest run && npm run test:events && npm run test:engine",
+    "build:offline": "node scripts/offline-fonts.mjs on && next build; node scripts/offline-fonts.mjs off"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@number-flow/react": "^0.6.2",
+    "lightweight-charts": "^5.2.1",
+    "motion": "^13.1.1",
     "next": "16.2.10",
     "pg": "^8.22.0",
     "react": "19.2.4",

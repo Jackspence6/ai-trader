@@ -1,0 +1,32 @@
+/**
+ * Typography.
+ *
+ * Isolated in its own module for one practical reason: `next/font/google`
+ * fetches the font files at build time, so a box with no outbound network
+ * fails the build with a font error and nothing else useful. Keeping the two
+ * calls here means the offline swap is a one-file change rather than surgery
+ * on the root layout, and `pnpm build:offline` does exactly that.
+ *
+ * The CSS fallback stacks in globals.css matter more than they look. If a font
+ * ever fails to load at runtime the interface degrades to a system UI face and
+ * a system monospace, not to Times New Roman — which on a screen full of
+ * tabular figures is the difference between "different" and "broken".
+ */
+
+import { Inter, JetBrains_Mono } from "next/font/google";
+
+export const sans = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+  // Metric-adjusted fallback: the system face is scaled to Inter's metrics so
+  // the swap does not reflow a table mid-render.
+  adjustFontFallback: true,
+});
+
+export const mono = JetBrains_Mono({
+  variable: "--font-jb",
+  subsets: ["latin"],
+  display: "swap",
+  adjustFontFallback: true,
+});

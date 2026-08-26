@@ -40,8 +40,45 @@
   --color-s3: #d55181;
   --color-s4: #c98500;
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jb), ui-monospace, monospace;
+  /* If the webfont ever fails, the fallback has to be a face with the same
+     job — a UI sans and a real monospace. Falling back to a serif on a screen
+     of tabular figures is the difference between "different" and "broken". */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-jb), ui-monospace, "SF Mono", "JetBrains Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---------------------------------------------------------------- motion
+     Four durations and two curves, and everything in the interface uses one of
+     them. The values are chosen against what the motion is *for*: 90ms is below
+     the threshold where a hover reads as a delay, 180ms is the shortest move
+     the eye can follow across a panel, 320ms is a panel entering, 700ms is a
+     number counting to a new value — slow enough to read the change, fast
+     enough not to be waited on.
+
+     `--ease-out` is the standard decelerate for anything entering or
+     responding. `--ease-spring` overshoots slightly and is reserved for things
+     that should feel physical: a drawer, a value snapping into place. Using it
+     everywhere would make the whole interface feel bouncy, which is the wrong
+     register for an instrument. */
+  --dur-instant: 90ms;
+  --dur-quick: 180ms;
+  --dur-panel: 320ms;
+  --dur-count: 700ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ------------------------------------------------------------- elevation
+     Depth without shadows. A dark instrument lit by shadow looks muddy — these
+     surfaces are lit from *inside* instead, by a hairline that catches light at
+     the top edge and a low glow behind live values. Three levels only. */
+  --glow-accent: 0 0 0 1px color-mix(in oklab, var(--color-accent) 22%, transparent),
+    0 0 24px -6px color-mix(in oklab, var(--color-accent) 45%, transparent);
+  --glow-up: 0 0 20px -6px color-mix(in oklab, var(--color-up) 55%, transparent);
+  --glow-down: 0 0 20px -6px color-mix(in oklab, var(--color-down) 55%, transparent);
+  --lift-1: inset 0 1px 0 0 color-mix(in oklab, white 4%, transparent);
+  --lift-2: inset 0 1px 0 0 color-mix(in oklab, white 7%, transparent),
+    0 1px 2px 0 rgb(0 0 0 / 0.4);
 }
 
 @layer base {
@@ -278,5 +315,106 @@
   .lock-scanline,
   .lock-core {
     animation: none !important;
+  }
+}
+
+
+/* ============================================================
+   Motion primitives
+   Everything below is transform/opacity only so it stays on the
+   compositor. A data terminal that drops frames while a number
+   updates is worse than one that does not animate at all.
+   ============================================================ */
+
+/* The shimmer that runs across a skeleton. One keyframe, reused by every
+   loading placeholder, so the whole screen loads in step rather than as a
+   dozen independent flickers. */
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A value that just changed. Deliberately a background wash rather than a
+   colour change on the text — recolouring a number to signal "updated" and
+   also using colour to signal "up or down" makes the two unreadable together. */
+@keyframes value-flash {
+  from {
+    background-color: color-mix(in oklab, var(--color-accent) 18%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The slow breath under a live panel header. Long enough that it reads as a
+   heartbeat rather than a blink. */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@utility skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-raised);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, white 6%, transparent),
+      transparent
+    );
+    animation: shimmer 1.6s var(--ease-out) infinite;
+  }
+}
+
+@utility flash-value {
+  animation: value-flash 900ms var(--ease-out);
+}
+
+@utility rise {
+  animation: rise-in var(--dur-panel) var(--ease-out) both;
+}
+
+/* Interactive affordance, applied once rather than re-specified per control.
+   Hover lifts the hairline; focus draws the accent ring the focus-visible rule
+   already defines. */
+@utility interactive {
+  transition:
+    border-color var(--dur-instant) var(--ease-out),
+    background-color var(--dur-instant) var(--ease-out),
+    color var(--dur-instant) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-line-bright);
+  }
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 }
