@@ -61,7 +61,8 @@ if (!python) {
     console.error("    pnpm setup:engine\n");
     console.error("  or by hand:\n");
     console.error(`    cd ${path.relative(repo, backend)}`);
-    console.error("    python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'\n");
+    console.error("    python3 -m venv .venv");
+    console.error("    .venv/bin/pip install -c constraints.txt -e '.[dev]'\n");
   }
   process.exit(1);
 }
