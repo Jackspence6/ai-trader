@@ -10,6 +10,10 @@
  * is idempotent, and status only reads.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { closePool, status } from "@/lib/db/client";
 import { appliedMigrations, migrate, pendingMigrations, tableCounts } from "@/lib/db/migrate";
 import { importDays } from "@/lib/db/import";

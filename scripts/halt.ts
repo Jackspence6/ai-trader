@@ -13,6 +13,10 @@
  * shell on the box.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { armDeadMan, clear, readAudit, readHalt, trip } from "@/lib/killswitch";
 
 const cmd = process.argv[2] ?? "status";

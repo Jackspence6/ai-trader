@@ -9,6 +9,10 @@
  * the first and last is shown even when empty.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { listDays, recordingsRoot, statsForDay, summarise } from "@/lib/recorder/store";
 import { readLiveness } from "@/lib/recorder/heartbeat";
 

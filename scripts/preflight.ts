@@ -23,6 +23,10 @@
  * of "are we live?" is exactly the bug this check exists to catch.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { databaseConfigured, databaseUrl } from "../src/lib/db/client";
 import { describeExecutionMode } from "../src/lib/oms/venues/resolve";
 

@@ -19,6 +19,10 @@
  *   curl -X POST localhost:3999/resume -d 'reason=investigated, all clear'
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { clear, readAudit, trip } from "@/lib/killswitch";
 import { readHaltSync } from "@/lib/killswitch/state";

@@ -12,6 +12,10 @@
  * flushed per batch, an unclean kill loses at most the current cycle.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { createRecorder } from "@/lib/recorder/recorder";
 
 const quiet = process.argv.includes("--quiet");

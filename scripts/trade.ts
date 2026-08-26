@@ -32,6 +32,10 @@
  * exactly the conditions worth having a record of.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { runTradingPass } from "@/lib/engine/pass";
 
 const args = process.argv.slice(2);

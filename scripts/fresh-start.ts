@@ -20,6 +20,10 @@
  * labelled as such.
  */
 
+// Configuration first: every entry point must see the same .env.local the
+// console does, or the two run against different databases from one directory.
+import "./env";
+
 import { recordCapitalEvent, resetLedger, readCapitalEvents } from "@/lib/fund/ledger";
 import { getRateTable, usdPerUnit } from "@/lib/market/convert";
 import { resetPaperBook } from "@/lib/oms/store";
