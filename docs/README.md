@@ -12,6 +12,7 @@ Start here depending on why you are here.
 | | |
 |---|---|
 | [Quick start](./quickstart.md) | Fresh machine to a running console |
+| [Deploying on an old machine](./deploy-old-machine.md) | Unknown OS, low spec, nothing installed. Follow it literally |
 | [Configuration](./configuration.md) | Every variable, and what breaks without it |
 | [Operations](./operations.md) | Start, stop, monitor, recover. What each screen means |
 | [Deployment checklist](./deployment-checklist.md) | The tick-through for a first live bring-up |

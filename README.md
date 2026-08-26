@@ -24,6 +24,11 @@ most of the other. ⌘K opens the command palette, grouped by desk.
 
 ## Run it
 
+Deploying to a machine rather than developing on one? Start with
+[deploying on an old machine](docs/deploy-old-machine.md) — it assumes nothing
+is installed, covers Windows as well as Linux, and has a prebuilt bundle for a
+box that cannot afford to compile.
+
 ```sh
 pnpm dev                          # the console on :3000 (SITE_PASSWORD in .env.local)
 docker compose up -d              # Postgres/Timescale — both desks' schemas

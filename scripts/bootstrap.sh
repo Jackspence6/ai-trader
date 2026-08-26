@@ -88,7 +88,14 @@ fi
 say "Build"
 # The typefaces are vendored in src/app/fonts, so this needs no network beyond
 # what pnpm install already used. A failure here is a real failure.
-pnpm build || { no "build failed — see above"; exit 1; }
+#
+# Peak build memory is about 1.5GB. The cap keeps Node from growing into swap
+# and thrashing on a small machine; on a large one it changes nothing.
+if ! NODE_OPTIONS="--max-old-space-size=2048" pnpm build; then
+  no "build failed — see above"
+  no "if it ran out of memory, see docs/deploy-old-machine.md, 'If the build will not finish'"
+  exit 1
+fi
 ok "console built"
 
 say "Configuration"

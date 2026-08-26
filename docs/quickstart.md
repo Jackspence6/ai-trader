@@ -40,6 +40,11 @@ pnpm halt:server                      # kill switch that outlives the console
 docker compose --profile events up -d # Event Markets engine
 ```
 
+If the machine you are deploying to is old, slow, or you are not sure what is
+installed on it, use [deploying on an old machine](./deploy-old-machine.md)
+instead — same result, written for a box you do not use every day, with a
+Windows path and a prebuilt bundle for when the build will not finish.
+
 ## Verify it
 
 ```sh

@@ -30,7 +30,8 @@
     "test:engine": "node scripts/py.mjs",
     "test:all": "vitest run && pnpm test:events && pnpm test:engine",
     "preflight": "tsx scripts/preflight.ts",
-    "setup:engine": "node scripts/setup-engine.mjs"
+    "setup:engine": "node scripts/setup-engine.mjs",
+    "bundle": "next build && node scripts/bundle.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
