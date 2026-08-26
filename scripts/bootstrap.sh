@@ -33,33 +33,81 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 ok "node modules installed"
 
 say "Database"
-if command -v docker >/dev/null 2>&1; then
-  docker compose up -d timescale
-  printf '  waiting for postgres'
-  for _ in $(seq 1 30); do
-    if docker compose exec -T timescale pg_isready -U trader -d meridian >/dev/null 2>&1; then
-      printf '\n'; ok "postgres up on :5433"; break
-    fi
-    printf '.'; sleep 2
-  done
-  pnpm db:migrate && ok "both desks' schemas migrated"
+# Docker being installed and the daemon being up are different things, and the
+# second one fails in a way that used to abort the whole bootstrap before the
+# build. Neither is fatal here: the console runs without a database, it just has
+# no history to show.
+if ! command -v docker >/dev/null 2>&1; then
+  no "docker not installed — skipping. The console will run; NAV history, the capital ladder and the event board will not."
+elif ! docker info >/dev/null 2>&1; then
+  no "docker is installed but the daemon is not running — start Docker Desktop, then re-run this script."
 else
-  no "skipped — no docker"
+  set +e
+  docker compose up -d timescale
+  UP=$?
+  set -e
+  if [ $UP -ne 0 ]; then
+    no "docker compose failed — see above"
+  else
+    printf '  waiting for postgres'
+    READY=0
+    for _ in $(seq 1 30); do
+      if docker compose exec -T timescale pg_isready -U trader -d meridian >/dev/null 2>&1; then
+        READY=1; break
+      fi
+      printf '.'; sleep 2
+    done
+    printf '\n'
+    if [ $READY -eq 1 ]; then
+      ok "postgres up on :5433"
+      set +e
+      pnpm db:migrate
+      MIG=$?
+      set -e
+      [ $MIG -eq 0 ] && ok "both desks' schemas migrated" || no "migration failed — see above"
+    else
+      no "postgres did not become ready in 60s"
+    fi
+  fi
 fi
 
 say "Build"
-pnpm build && ok "console built"
+# The webfonts are fetched at build time, so a box with no outbound network
+# fails here with a font error and nothing else useful. Rather than making that
+# a documented landmine, fall back to the system faces and say so — a console
+# in Helvetica beats a console that would not build.
+set +e
+pnpm build
+BUILT=$?
+set -e
+if [ $BUILT -ne 0 ]; then
+  no "build failed — retrying with system fonts (no network needed)"
+  pnpm build:offline && ok "console built with system fonts" || {
+    no "build failed for a reason other than fonts — see above"
+    exit 1
+  }
+else
+  ok "console built"
+fi
 
-say "What is still unset"
+say "Configuration"
 ENVF=".env.local"
-[ -f "$ENVF" ] || { touch "$ENVF"; }
-check_env() {
-  if grep -q "^$1=" "$ENVF" 2>/dev/null || [ -n "${!1:-}" ]; then ok "$1"; else no "$1 — $2"; fi
-}
-check_env SITE_PASSWORD    "the console fails closed without it and will not serve"
-check_env DATABASE_URL     "postgresql://trader:trader@localhost:5433/meridian"
-check_env TELEGRAM_BOT_TOKEN "optional — alerts are logged, not sent, until this is set"
-check_env ADMIN_TOKEN      "optional — gates the events desk's migration endpoint"
+if [ ! -f "$ENVF" ]; then
+  cp .env.example "$ENVF"
+  ok "created .env.local from .env.example — fill in SITE_PASSWORD before starting"
+else
+  ok ".env.local exists (left alone)"
+fi
+
+say "Preflight"
+# The real check: try everything rather than reading configuration. Allowed to
+# fail here without aborting the bootstrap, because most of what it reports is
+# a capability you may not need yet.
+set +e
+pnpm preflight
+PREFLIGHT=$?
+set -e
+[ $PREFLIGHT -eq 0 ] && ok "preflight clean" || no "preflight found problems — see above"
 
 say "Next"
 cat <<'TXT'

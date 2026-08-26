@@ -29,7 +29,8 @@
     "test:events": "node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/check-arb-parity.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-polymarket-parsing.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-consistency.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-scanner.mjs",
     "test:engine": "python -m pytest services/events-engine/backend/tests -q",
     "test:all": "vitest run && npm run test:events && npm run test:engine",
-    "build:offline": "node scripts/offline-fonts.mjs on && next build; node scripts/offline-fonts.mjs off"
+    "build:offline": "node scripts/offline-fonts.mjs on && next build; node scripts/offline-fonts.mjs off",
+    "preflight": "tsx scripts/preflight.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
