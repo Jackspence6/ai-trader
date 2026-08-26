@@ -86,23 +86,10 @@ else
 fi
 
 say "Build"
-# The webfonts are fetched at build time, so a box with no outbound network
-# fails here with a font error and nothing else useful. Rather than making that
-# a documented landmine, fall back to the system faces and say so — a console
-# in Helvetica beats a console that would not build.
-set +e
-pnpm build
-BUILT=$?
-set -e
-if [ $BUILT -ne 0 ]; then
-  no "build failed — retrying with system fonts (no network needed)"
-  pnpm build:offline && ok "console built with system fonts" || {
-    no "build failed for a reason other than fonts — see above"
-    exit 1
-  }
-else
-  ok "console built"
-fi
+# The typefaces are vendored in src/app/fonts, so this needs no network beyond
+# what pnpm install already used. A failure here is a real failure.
+pnpm build || { no "build failed — see above"; exit 1; }
+ok "console built"
 
 say "Configuration"
 ENVF=".env.local"

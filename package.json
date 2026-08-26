@@ -29,7 +29,6 @@
     "test:events": "node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/check-arb-parity.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-polymarket-parsing.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-consistency.mjs && node --experimental-strip-types --import ./scripts/events/ts-resolve.mjs ./scripts/events/test-scanner.mjs",
     "test:engine": "node scripts/py.mjs",
     "test:all": "vitest run && pnpm test:events && pnpm test:engine",
-    "build:offline": "node scripts/offline-fonts.mjs on && next build; node scripts/offline-fonts.mjs off",
     "preflight": "tsx scripts/preflight.ts",
     "setup:engine": "node scripts/setup-engine.mjs"
   },
@@ -44,6 +43,8 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
