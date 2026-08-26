@@ -17,6 +17,42 @@ evidence; where we can measure before buying, we measure first.
 
 ---
 
+## 0. Since the merge (2026-08-26)
+
+The arbitrage system and this one are now one product with two desks, so this
+ledger covers both. Full reasoning and sources:
+[`docs/research/2026-08-opportunities.md`](docs/research/2026-08-opportunities.md).
+
+**New, ranked above everything except going live:**
+
+- **E6 · Polymarket × Kalshi cross-venue prediction arbitrage — DO.** The one
+  genuinely new opportunity the merge unlocked. Kalshi is available in South
+  Africa (not among its 54 restricted jurisdictions); Polymarket already works
+  from here. Kalshi's taker fee is `0.07 x p x (1-p)` — the *same functional
+  form* as Polymarket's, so the fee model already generalises and there is a
+  test asserting it. Matcher, effective-odds conversion, depth model, scoring
+  and board all reuse. Missing: one read-only market adapter, a resolution-risk
+  axis (UMA oracle vs regulated criteria can resolve the same event
+  *differently*), and an annualised-return term, because profit is locked until
+  resolution and an 8c spread over a year is not an 8c spread over 90 days.
+  Verify with a tiny funded account before building — Kalshi requires full KYC
+  and several "supported" countries have since blocked access.
+- **E2 · third and fourth sportsbook — DO, in parallel.** Two books measured
+  zero arbitrage across 197 markets, best gap -1.3%. More books is the honest
+  experiment; the discovery method is written down and has worked twice.
+
+**Re-confirmed against external 2026 guidance, no verdict changed:** funding
+carry best-for-retail; cross-venue spread an execution project we would lose;
+triangular educational; dated basis predictable but capital-intensive;
+statistical arb not for retail. The ledger is well calibrated.
+
+**Newly rejected:** in-play sports arbitrage (seconds-long windows against a
+manual-placement charter — incompatible, not hard); narrow fast
+prediction-market gaps (a bot fight; we would be the retail entrant funding the
+winners, the same argument that rejected MEV).
+
+---
+
 ## 1. Next up — ranked (the agent's recommendation, updated 2026-07-26)
 
 1. **Go live with small real capital** — the single highest-EV item on this

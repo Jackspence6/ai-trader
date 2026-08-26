@@ -21,6 +21,7 @@ import {
   effectiveDecimalOdds,
   margin,
   takerFeePerShare,
+  VENUE_TAKER_RATE,
   worstCaseProfit,
 } from "./arb";
 
@@ -193,5 +194,33 @@ describe("stake naturalisation", () => {
         expect(Math.abs(rounded[j] - exact[j])).toBeLessThanOrEqual(5.0001);
       }
     }
+  });
+});
+
+describe("the fee model generalises across venues", () => {
+  it("prices a Kalshi contract with no new maths", () => {
+    // Both venues charge rate x p x (1-p). Pricing a second prediction market
+    // needs a market feed, not a second fee model — worth asserting so the
+    // claim in the research note stays true if either constant moves.
+    const p = 0.5;
+    expect(takerFeePerShare(p, VENUE_TAKER_RATE.kalshi)).toBeCloseTo(0.07 * p * (1 - p), 10);
+    // At 50c the Kalshi fee is 1.75c per contract, which is the figure quoted
+    // publicly — a useful external check on our own implementation.
+    expect(takerFeePerShare(0.5, VENUE_TAKER_RATE.kalshi)).toBeCloseTo(0.0175, 6);
+  });
+
+  it("shows why thin cross-venue spreads do not survive", () => {
+    // A 3c gross spread near 50/50, both legs taker, on the two venues.
+    const pmRate = 0.05;
+    const kalshiRate = VENUE_TAKER_RATE.kalshi;
+    const yesOnPm = 0.485;
+    const noOnKalshi = 0.485;
+    const gross = 1 - (yesOnPm + noOnKalshi); // 3c
+    const net =
+      1 - (effectiveBuyPrice(yesOnPm, pmRate) + effectiveBuyPrice(noOnKalshi, kalshiRate));
+    expect(gross).toBeCloseTo(0.03, 6);
+    // Fees take roughly 3c of the 3c. What is left is a rounding error, which
+    // is exactly what the public guidance reports and what E4 measured.
+    expect(net).toBeLessThan(0.005);
   });
 });

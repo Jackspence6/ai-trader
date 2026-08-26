@@ -34,6 +34,26 @@ export function negRiskFullSetCost(yesPrices: number[], feeRate: number): number
   return yesPrices.reduce((acc, p) => acc + effectiveBuyPrice(p, feeRate), 0);
 }
 
+/**
+ * Taker fee rates by venue, for the venues whose fee has the same shape.
+ *
+ * Both Polymarket and Kalshi charge `rate x p x (1 - p)` per contract — the same
+ * functional form, differing only in the constant. That is not a coincidence:
+ * it is the fee that is largest where the market is least certain, which is
+ * where a venue's own risk is highest.
+ *
+ * It matters here because it means the fee model already generalises. Pricing a
+ * Kalshi book needs no new maths, only a market feed — see
+ * docs/research/2026-08-opportunities.md. Recording that explicitly is cheaper
+ * than rediscovering it.
+ */
+export const VENUE_TAKER_RATE = {
+  /** Category-dependent; see FEE_FALLBACK_BY_CATEGORY. Read live per market. */
+  polymarket: null,
+  /** Flat across contracts as of 2026. */
+  kalshi: 0.07,
+} as const;
+
 export const FEE_FALLBACK_BY_CATEGORY: Record<string, number> = {
   crypto: 0.07, sports: 0.05, finance: 0.04, politics: 0.04, mentions: 0.04,
   tech: 0.04, economics: 0.05, culture: 0.05, weather: 0.05, geopolitics: 0.0,
