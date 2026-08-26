@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import { Panel, Micro, Stat, cx } from "@/components/ui";
 import { useNow } from "@/components/vis";
 import { apiPost } from "@/lib/events/api";
+import { balancedStakes, margin, naturalizeStakes } from "@/lib/events/arb";
 import {
   durationShort,
   marketLabel,
@@ -41,15 +42,35 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   resolution_risk: "Resolution risk",
 };
 
-/** Balanced stakes, then naturalised to R10 steps and re-checked at the worst branch. */
+/**
+ * The stake plan the operator will actually place.
+ *
+ * This delegates to `naturalizeStakes` rather than rounding here. That is not
+ * tidiness — the two are not the same function. Naive rounding to R10 can turn
+ * a genuinely positive book negative: each stake moves by up to R5, and on a
+ * thin book at the wrong odds the worst branch loses more than the edge was
+ * worth. A property test found a case losing R8 on a book the board was
+ * correctly reporting as profitable.
+ *
+ * `naturalizeStakes` rounds, checks the worst branch, and if rounding broke it,
+ * bumps the losing leg by one step and re-checks — up to three times, then
+ * falls back to R50 steps, then gives up and returns exact stakes flagged as
+ * un-natural. The UI shows which happened, because "place R3,417.62" is a
+ * fingerprint and the operator should know when they are being asked for one.
+ */
 function computeStakes(legs: Opportunity["legs"], total: number) {
-  const qs = legs.map((l) => 1 / l.odds);
-  const S = qs.reduce((a, b) => a + b, 0);
-  const exact = qs.map((q) => (total * q) / S);
-  const rounded = exact.map((s) => Math.max(10, Math.round(s / 10) * 10));
-  const totalRounded = rounded.reduce((a, b) => a + b, 0);
-  const worst = Math.min(...rounded.map((s, i) => s * legs[i].odds)) - totalRounded;
-  return { exact, rounded, totalRounded, worst, marginPct: (1 - S) * 100 };
+  const odds = legs.map((l) => l.odds);
+  const plan = naturalizeStakes(total, odds);
+  const exact = balancedStakes(total, odds);
+  return {
+    exact,
+    rounded: plan.stakes,
+    totalRounded: plan.total,
+    worst: plan.worstProfit,
+    natural: plan.natural,
+    step: plan.step,
+    marginPct: margin(odds) * 100,
+  };
 }
 
 export function StakePlan({
@@ -111,7 +132,14 @@ export function StakePlan({
         <Stat label="Margin">
           <span className="tnum text-up">{pct(opp.margin_pct)}</span>
         </Stat>
-        <Stat label="Worst branch" sub={<span className="micro text-dim">after R10 rounding</span>}>
+        <Stat
+          label="Worst branch"
+          sub={
+            <span className="micro text-dim">
+              {calc.natural ? `after R${calc.step} rounding` : "exact stakes — rounding broke it"}
+            </span>
+          }
+        >
           <span className={cx("tnum", calc.worst > 0 ? "text-up" : "text-down")}>
             {zar(calc.worst)}
           </span>
@@ -143,8 +171,11 @@ export function StakePlan({
         />
         <span className="micro text-dim">ZAR</span>
         {roundingCost > 0.5 && (
-          <span className="micro text-dim">
-            · rounding costs {zar(roundingCost)}
+          <span className="micro text-dim">· rounding costs {zar(roundingCost)}</span>
+        )}
+        {!calc.natural && (
+          <span className="micro text-warn">
+            · no round-number plan survives this book — these are exact stakes
           </span>
         )}
       </label>
