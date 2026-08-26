@@ -1,0 +1,25 @@
+# How often the box checks main for changes.
+#
+# Fifteen minutes is a deliberate middle: fast enough that a fix you push from
+# your laptop is live before you have stopped thinking about it, slow enough
+# that a box which cannot reach GitHub is not hammering it. Nothing here is
+# time-critical — the trading loop runs on its own cadence and an update is
+# never urgent.
+#
+# Persistent=true matters on a machine that gets switched off: if the box was
+# down when a check was due, it runs one shortly after boot rather than waiting
+# for the next slot.
+#
+# RandomizedDelaySec keeps several boxes from all fetching on the same second.
+
+[Unit]
+Description=Check main for changes every 15 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+RandomizedDelaySec=90
+Persistent=true
+
+[Install]
+WantedBy=timers.target

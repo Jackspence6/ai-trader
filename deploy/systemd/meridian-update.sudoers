@@ -1,0 +1,14 @@
+# Lets the updater restart the three Meridian units, and nothing else.
+#
+# Install:
+#   sudo cp deploy/systemd/meridian-update.sudoers /etc/sudoers.d/meridian-update
+#   sudo chmod 0440 /etc/sudoers.d/meridian-update
+#   sudo visudo -c          # must say "parsed OK" before you walk away
+#
+# Read the line before installing it. It is scoped to one user, one binary and
+# three named units: this user cannot restart anything else, cannot stop or
+# disable them, and cannot run any other command as root. If you would rather
+# grant nothing at all, skip this file — the updater will still pull, build and
+# test, and will tell you the new version is waiting for a restart.
+
+meridian ALL=(root) NOPASSWD: /usr/bin/systemctl restart meridian-console meridian-trade meridian-record

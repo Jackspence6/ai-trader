@@ -1,0 +1,34 @@
+# The auto-updater. Pull main, rebuild, restart — for a box nobody is sitting in
+# front of.
+#
+# Type=oneshot: it runs, does its work, and exits. The .timer beside this file
+# is what makes it periodic. Deliberately not a long-running daemon — a daemon
+# that dies stops updating silently, whereas a timer that fails is visible in
+# `systemctl list-timers` and retries on its own next tick.
+#
+# It restarts the other units, which the unprivileged service user cannot do on
+# its own. meridian-update.sudoers grants exactly those three restarts and
+# nothing else; install it or the updater will build the new version, say so,
+# and leave the restart to you.
+
+[Unit]
+Description=Meridian auto-update from main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=meridian
+WorkingDirectory=/opt/meridian
+EnvironmentFile=-/opt/meridian/.env.local
+# Build peak is about 1.5GB; the cap keeps Node from growing into swap on a
+# small machine.
+Environment=NODE_OPTIONS=--max-old-space-size=2048
+ExecStart=/usr/bin/env node scripts/update.mjs
+StandardOutput=append:/var/log/meridian/update.log
+StandardError=append:/var/log/meridian/update.log
+# One update must never hang forever holding its lock.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
