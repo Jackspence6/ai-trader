@@ -21,8 +21,16 @@ fetch main ─── nothing new? ───────────────�
           ├─ build                         │ the old version is still
           └─ run the TypeScript test suite ┘ running and serving all of this
                │
-               ├─ all passed ──► restart the services   ◄── the only downtime
-               └─ anything failed ──► put the checkout back, keep serving
+               ├─ anything failed ──► put the checkout back, keep serving
+               │
+               └─ all passed ──► restart  ◄── the only downtime
+                                    │
+                                    └─ probe it ─┬─ answering ──► done
+                                                 │
+                                                 └─ silent ──► roll back,
+                                                               restart the old
+                                                               version, probe
+                                                               again
 ```
 
 **A failed update never takes the box down.** That is the rule the whole design
@@ -110,12 +118,24 @@ waiting for a restart.
 ## Running it by hand
 
 ```sh
-pnpm update:dry     # say what it would do, change nothing
-pnpm update         # do it
+pnpm self-update:dry     # say what it would do, change nothing
+pnpm self-update         # do it
 ```
 
 `--force` rebuilds even when the commit has not changed, which is occasionally
 useful after editing something outside git.
+
+**The name is `self-update`, not `update`, and that is not a style choice.**
+`pnpm update` is pnpm's own built-in dependency bumper, and a built-in beats a
+`package.json` script of the same name on every platform. This document used to
+say `pnpm update`; following it upgraded seven packages, rewrote 849 lines of
+`pnpm-lock.yaml`, and deployed nothing — while looking like it had worked. It is
+easy to miss because `pnpm update:dry` has no built-in equivalent, so the dry
+run really does run the script and reads correctly.
+
+If you ever find yourself renaming this back to something shorter, `pnpm run
+update` would work, but relying on a person typing `run` is not a safety
+property. Leave it as `self-update`.
 
 ## Configuration
 
@@ -124,6 +144,7 @@ useful after editing something outside git.
 | `MERIDIAN_UPDATE_BRANCH` | Branch to track. Default `main` |
 | `MERIDIAN_UPDATE_RESTART` | Command to restart the services. Defaults to the systemd units when present. Set it to a single space to disable restarting |
 | `MERIDIAN_UPDATE_SKIP_TESTS=1` | Skip the test gate. Not recommended — the gate is what makes an unattended restart safe |
+| `MERIDIAN_UPDATE_HEALTH_URL` | What to probe after the restart. Default `http://localhost:3000/login`. Any HTTP response counts, including 401 and 302 — a locked console answering 401 is a working console. Only silence is a failure. Set it to a single space to skip the probe |
 
 The test gate is vitest only, deliberately. It needs no network and no database,
 so it is a real gate rather than a coin flip on whether a venue answered. A box
@@ -143,6 +164,8 @@ The log says which of these it is. In rough order of likelihood:
 | `ROLLBACK: tests failed on the new version` | `main` is broken. The box is fine and still on the last good commit. Fix `main` and it catches up on its own |
 | `another update is running` | Two ticks overlapped. Harmless — the lock is doing its job |
 | `no restart command is configured` | It updated and built, but nothing restarted. Install the sudoers file or set `MERIDIAN_UPDATE_RESTART` |
+| `restarted but never came up` | The new version built and passed its tests, then failed to serve — usually a missing setting or a taken port, neither of which a test suite can see. It has already rolled back and restarted the old version |
+| `FAIL: neither version is answering` | The rollback did not bring it back either. This one needs a person |
 
 ---
 
@@ -152,9 +175,6 @@ The log says which of these it is. In rough order of likelihood:
 Compose handles their own lifecycle; a schema migration still needs
 `pnpm db:migrate` run deliberately.
 
-**There is no health check after the restart.** The updater confirms the new
-version builds and passes its tests, then restarts and stops watching. If the
-new version starts and immediately crashes, systemd's `Restart=` will keep
-trying it and `/system` will show it — but the updater will not roll back for
-you at that point. That is the honest limit of this design, and the reason the
-test gate is not optional.
+**A version that fails on a machine-specific condition still costs one
+restart.** The probe catches it and rolls back, but the box is down for the
+minute or two that takes. The test gate is what keeps that rare.

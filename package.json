@@ -32,8 +32,8 @@
     "preflight": "tsx scripts/preflight.ts",
     "setup:engine": "node scripts/setup-engine.mjs",
     "bundle": "node scripts/bundle.mjs",
-    "update": "node scripts/update.mjs",
-    "update:dry": "node scripts/update.mjs --dry-run"
+    "self-update": "node scripts/update.mjs",
+    "self-update:dry": "node scripts/update.mjs --dry-run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

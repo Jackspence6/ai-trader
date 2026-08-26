@@ -39,6 +39,10 @@
 //                             systemd units when systemctl is present; set it
 //                             to a single space to disable restarting entirely.
 //   MERIDIAN_UPDATE_SKIP_TESTS=1  skip the test gate (not recommended)
+//   MERIDIAN_UPDATE_HEALTH_URL    what to probe after the restart to prove the
+//                                 new version is actually serving. Defaults to
+//                                 http://localhost:3000/login. Set to a single
+//                                 space to skip the probe.
 
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -199,6 +203,10 @@ function main() {
 
   // Everything from here runs while the old version is still serving. The
   // services are not touched until it has all passed.
+  // Returns whether the checkout was actually restored. The caller always
+  // treats an update that reached here as failed; what it needs to know
+  // separately is whether the tree is now consistent with the processes,
+  // because that decides whether restarting again is safe or pointless.
   const rollback = (why) => {
     log(`ROLLBACK: ${why}`);
     log(`          returning the checkout to ${current.slice(0, 7)}, which is what is running`);
@@ -206,15 +214,15 @@ function main() {
     if (!reset.ok) {
       log(`          FAILED to roll back: ${reset.err.split("\n")[0]}`);
       log("          This box needs a person. The processes are still running the old code.");
-      return 1;
+      return false;
     }
     // The tree is back, but node_modules and .next may be half-way to the new
     // version. Put them back too, or the next restart starts something that was
     // never built.
     pnpm("install", "--frozen-lockfile");
     pnpm("build");
-    log("          rolled back; the old version is intact and still running");
-    return 1;
+    log("          rolled back; the old version is intact");
+    return true;
   };
 
   log("pulling...");
@@ -226,14 +234,16 @@ function main() {
 
   log("installing dependencies...");
   if (!pnpm("install", "--frozen-lockfile").ok) {
-    return rollback("dependency install failed");
+    rollback("dependency install failed");
+    return 1;
   }
 
   log("building...");
   // Same cap as bootstrap: keep Node from growing into swap on a small box.
   const built = pnpm("build");
   if (!built.ok) {
-    return rollback("build failed");
+    rollback("build failed");
+    return 1;
   }
 
   if (!skipTests) {
@@ -242,7 +252,8 @@ function main() {
     // a true gate rather than a coin flip on whether a venue answered. A box
     // that cannot reach the internet must still be able to update itself.
     if (!pnpm("vitest", "run", "--silent").ok) {
-      return rollback("tests failed on the new version");
+      rollback("tests failed on the new version");
+      return 1;
     }
   } else {
     log("tests skipped (MERIDIAN_UPDATE_SKIP_TESTS=1)");
@@ -268,9 +279,74 @@ function main() {
     return 1;
   }
 
-  log(`updated to ${target.slice(0, 7)} and restarted`);
+  // Building and passing tests is not the same as serving. A version can do
+  // both and then die on boot — a missing environment variable, a port already
+  // taken, a migration it needed. Without this the updater restarts and stops
+  // watching, and the box is silently down until somebody looks.
+  if (!probeHealthy()) {
+    log("the new version is not answering after the restart");
+    if (!rollback("restarted but never came up")) {
+      // The tree could not be restored, so restarting again would just start
+      // the broken version a second time.
+      log("FAIL: could not roll back. Do not restart again without looking.");
+      return 1;
+    }
+    log(`restarting the old version: ${restart}`);
+    run(cmd, args, { stdio: "inherit", encoding: undefined });
+    if (probeHealthy()) {
+      log("the old version is serving again; main needs a fix");
+      return 1;
+    }
+    log("FAIL: neither version is answering. This box needs a person.");
+    return 1;
+  }
+
+  log(`updated to ${target.slice(0, 7)}, restarted, and answering`);
   warnIfBuildDirtiedTheTree();
   return 0;
+}
+
+/**
+ * Is the console actually serving?
+ *
+ * Deliberately generous about *what* counts. Any HTTP response at all means a
+ * server is listening and routing — including 401 and 302, which is what a
+ * locked console returns and would be wrong to read as a failure. What this is
+ * looking for is the absence of a response: connection refused, or nothing at
+ * all before the deadline.
+ */
+function probeHealthy() {
+  const url = (process.env.MERIDIAN_UPDATE_HEALTH_URL ?? "http://localhost:3000/login").trim();
+  if (!url) {
+    log("health probe skipped (MERIDIAN_UPDATE_HEALTH_URL is empty)");
+    return true;
+  }
+
+  const deadline = Date.now() + 90_000;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt += 1;
+    const r = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `fetch(${JSON.stringify(url)}, { redirect: "manual" })
+           .then((r) => { console.log(r.status); process.exit(0); })
+           .catch(() => process.exit(1));
+         setTimeout(() => process.exit(1), 8000);`,
+      ],
+      { encoding: "utf8" },
+    );
+    if (r.status === 0) {
+      log(`health probe: ${url} answered ${r.stdout.trim()} after ${attempt} ${attempt === 1 ? "try" : "tries"}`);
+      return true;
+    }
+    // Sleep without pulling in a timers dependency: a blocking wait is fine
+    // here, this process has nothing else to do.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
+  }
+  log(`health probe: ${url} did not answer within 90s (${attempt} tries)`);
+  return false;
 }
 
 /**
