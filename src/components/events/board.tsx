@@ -13,9 +13,10 @@
  * demand opposite responses from the operator — so they are drawn differently.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Panel, Micro, Tag, cx } from "@/components/ui";
+import { Panel, cx } from "@/components/ui";
+import { Empty, SkeletonTable, useNow } from "@/components/vis";
 import { useOpportunityFeed } from "@/lib/events/useFeed";
 import {
   ageSeconds,
@@ -73,24 +74,19 @@ export function EventsBoard() {
   const [sortDesc, setSortDesc] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [showExpired, setShowExpired] = useState(false);
-  const [selected, setSelected] = useState<Opportunity | null>(null);
   const params = useSearchParams();
 
-  // Telegram "stake plan" deep link: /events?opp=<id>
-  useEffect(() => {
-    const target = params.get("opp");
-    if (target && !selected) {
-      const hit = opps.find((o) => o.id === target);
-      if (hit) setSelected(hit);
-    }
-  }, [params, opps, selected]);
-
-  // Keep an open plan in step with the feed rather than freezing it at open time.
-  useEffect(() => {
-    if (!selected) return;
-    const fresh = opps.find((o) => o.id === selected.id);
-    if (fresh && fresh.last_seen !== selected.last_seen) setSelected(fresh);
-  }, [opps, selected]);
+  // The open plan is held as an *id*, not as a copy of the opportunity, and the
+  // row is looked up from the live feed on every render. The previous version
+  // stored the object and used two effects to keep it in step — one to adopt the
+  // deep-linked row once it arrived, one to replace it whenever the feed moved.
+  // Both were setState-inside-an-effect, which costs a second render pass on
+  // every tick of a feed that ticks twice a second, and the second one raced the
+  // first on load. Deriving it needs neither.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const deepLinked = params.get("opp");
+  const selected =
+    opps.find((o) => o.id === (selectedId ?? deepLinked)) ?? null;
 
   const rows = useMemo(() => {
     const filtered = opps.filter(
@@ -111,7 +107,9 @@ export function EventsBoard() {
   }
 
   const active = opps.filter((o) => o.state === "active").length;
-  const now = Date.now();
+  // Ticks fast enough to expire a row flash cleanly; see useNow on why this is
+  // not just Date.now() in the render body.
+  const now = useNow(400);
 
   return (
     <div className="space-y-3">
@@ -199,7 +197,7 @@ export function EventsBoard() {
                   return (
                     <tr
                       key={o.id}
-                      onClick={() => setSelected(o)}
+                      onClick={() => setSelectedId(o.id)}
                       className={cx(
                         "cursor-pointer border-b border-line/60 transition-colors",
                         lit ? "bg-accent/[0.07]" : "hover:bg-raised/30",
@@ -253,7 +251,9 @@ export function EventsBoard() {
         )}
       </Panel>
 
-      <StakePlan opp={selected} onClose={() => setSelected(null)} />
+      {/* Keyed on the opportunity so a different row gets a fresh panel rather
+          than one that has to reset its own inputs in an effect. */}
+      <StakePlan key={selected?.id} opp={selected} onClose={() => setSelectedId(null)} />
     </div>
   );
 }
@@ -261,44 +261,45 @@ export function EventsBoard() {
 /**
  * An empty board has three different meanings and they are not interchangeable.
  * A market with no arbitrage in it is a finding; a scanner that is not running
- * is a fault; a filter hiding everything is neither.
+ * is a fault; a filter hiding everything is neither. They share the firm's
+ * empty-state component so that this desk's "nothing here" reads identically to
+ * the other desk's.
  */
 function EmptyBoard({ status, filtered }: { status: string; filtered: boolean }) {
   if (status === "down") {
     return (
-      <div className="px-3 py-10 text-center">
-        <Micro className="mb-2 text-down">NOTHING IS SCANNING</Micro>
-        <p className="mx-auto max-w-md text-[12px] leading-relaxed text-muted">
-          No engine is connected and no database is configured, so this screen has no
-          way to know what the books are doing. This is not an empty market — it is a
-          blank instrument. Start the events engine, or point
-          <code className="mx-1 text-ink">DATABASE_URL</code> at the database it writes.
-        </p>
-      </div>
+      <Empty
+        kind="fault"
+        title="NOTHING IS SCANNING"
+        body={
+          <>
+            No engine is connected and no database is configured, so this screen has no
+            way to know what the books are doing. This is not an empty market — it is a
+            blank instrument. Start the events engine, or point{" "}
+            <code className="text-ink">DATABASE_URL</code> at the database it writes.
+          </>
+        }
+      />
     );
   }
   if (status === "connecting") {
-    return (
-      <div className="px-3 py-10 text-center">
-        <Micro className="text-dim">LOOKING FOR THE ENGINE</Micro>
-      </div>
-    );
+    return <SkeletonTable rows={5} cols={7} label="Looking for the engine" />;
   }
   if (filtered) {
     return (
-      <div className="px-3 py-10 text-center">
-        <Micro className="text-dim">NOTHING MATCHES THIS FILTER</Micro>
-      </div>
+      <Empty
+        kind="idle"
+        compact
+        title="NOTHING MATCHES THIS FILTER"
+        body="Widen the route filter, or switch to showing closed opportunities."
+      />
     );
   }
   return (
-    <div className="px-3 py-10 text-center">
-      <Micro className="mb-2 text-up">SCANNING · NO ARBITRAGE OPEN</Micro>
-      <p className="mx-auto max-w-md text-[12px] leading-relaxed text-muted">
-        The feed is live and the books are being read; none of them currently cross.
-        That is the normal state of an efficient market and it is a measurement, not a
-        fault. <Tag tone="neutral">Research</Tag> shows how close they have been getting.
-      </p>
-    </div>
+    <Empty
+      kind="idle"
+      title="SCANNING · NO ARBITRAGE OPEN"
+      body="The feed is live and the books are being read; none of them currently cross. That is the normal state of an efficient market and it is a measurement, not a fault — Research shows how close they have been getting."
+    />
   );
 }

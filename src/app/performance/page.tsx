@@ -26,6 +26,7 @@ import type {
 } from "@/lib/engine/performance";
 import type { CompletedTrade, OpenTrade } from "@/lib/portfolio/trades";
 import { cx, Delta, Micro, Panel, Stat, Tag } from "@/components/ui";
+import { Empty } from "@/components/vis";
 
 const EXIT_LABELS: Record<string, string> = {
   funding_inverted: "Funding inverted",
@@ -577,7 +578,7 @@ function TradingLedger({ report }: { report: PerformanceReport }) {
 
           <Panel label="HOW TRADES CLOSED" hint="EXIT REASONS">
             {report.exits.total === 0 ? (
-              <div className="text-[11px] text-dim">No exits yet.</div>
+              <Empty compact kind="idle" title="NO EXITS YET" body="Attribution fills in as positions close." />
             ) : (
               <ul className="space-y-2">
                 {report.exits.byReason.map((e) => (

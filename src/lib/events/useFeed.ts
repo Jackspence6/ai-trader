@@ -34,7 +34,16 @@ export function useOpportunityFeed() {
   const [status, setStatus] = useState<FeedStatus>("connecting");
   const [flash, setFlash] = useState<Map<string, number>>(new Map());
 
+  // The active tier is both a ref and a piece of state on purpose: the ref is
+  // read inside timers and socket callbacks where a stale closure would pick the
+  // wrong branch, and the state is what callers render. Returning the ref
+  // directly would hand consumers a value that changes without a re-render.
   const tier = useRef<"none" | "demo" | "db" | "ws">("none");
+  const [source, setSource] = useState<"none" | "demo" | "db" | "ws">("none");
+  const setTier = useCallback((next: "none" | "demo" | "db" | "ws") => {
+    tier.current = next;
+    setSource(next);
+  }, []);
   const wsRef = useRef<WebSocket | null>(null);
   const demoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -63,7 +72,7 @@ export function useOpportunityFeed() {
   const startDemo = useCallback(() => {
     if (!DEMO_ENABLED) return;
     if (tier.current === "ws" || tier.current === "db" || demoTimer.current) return;
-    tier.current = "demo";
+    setTier("demo");
     setStatus("demo");
     let current = DEMO_OPPS;
     upsert(current, true);
@@ -71,7 +80,7 @@ export function useOpportunityFeed() {
       current = walkDemo(current);
       upsert(current);
     }, 2000);
-  }, [upsert]);
+  }, [upsert, setTier]);
 
   // ---- tier 2: poll the Neon-backed route handlers ------------------------
   const pollOnce = useCallback(async (): Promise<boolean> => {
@@ -82,7 +91,7 @@ export function useOpportunityFeed() {
       if (data?.source !== "db") return false;
       if (tier.current === "ws") return true;
       if (tier.current !== "db") {
-        tier.current = "db";
+        setTier("db");
         stopDemo();
         setStatus("live");
       }
@@ -91,7 +100,7 @@ export function useOpportunityFeed() {
     } catch {
       return false;
     }
-  }, [upsert, stopDemo]);
+  }, [upsert, stopDemo, setTier]);
 
   useEffect(() => {
     let closed = false;
@@ -111,7 +120,7 @@ export function useOpportunityFeed() {
         try {
           const msg = JSON.parse(ev.data);
           if (tier.current !== "ws") {
-            tier.current = "ws";
+            setTier("ws");
             stopDemo();
             stopPoll();
             setOpps(new Map());
@@ -124,7 +133,7 @@ export function useOpportunityFeed() {
       ws.onclose = () => {
         if (closed) return;
         if (tier.current === "ws") {
-          tier.current = "none";
+          setTier("none");
           setStatus("connecting");
         }
         setTimeout(connect, retry);
@@ -134,12 +143,20 @@ export function useOpportunityFeed() {
     };
     connect();
 
-    // tier 2 — start polling right away; it yields to WS if that connects
+    // tier 2 — start polling right away; it yields to WS if that connects.
+    //
+    // The state updates below all happen from a promise callback or a timer,
+    // never from the effect body, so they cost no extra synchronous render.
+    // The lint rule cannot follow the value through `.then()` and reads the
+    // whole chain as if it ran inline.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void pollOnce().then((ok) => {
       if (ok || closed) return;
       setTimeout(() => {
         if (tier.current !== "none") return;
         if (DEMO_ENABLED) startDemo();
+        // Verdict after the grace period: nothing answered, so the board says so
+        // rather than sitting on "connecting" forever.
         else setStatus("down");
       }, WS_GRACE_MS);
     });
@@ -160,7 +177,7 @@ export function useOpportunityFeed() {
     opps: Array.from(opps.values()),
     status,
     flash,
-    source: tier.current,
+    source,
     refresh: pollOnce,
   };
 }

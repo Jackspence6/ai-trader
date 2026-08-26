@@ -27,6 +27,7 @@ import { DEFAULT_VENUE_FEES } from "@/lib/calc/costs";
 import type { CapitalEvent, FundAccount } from "@/lib/fund/ledger";
 import { TierLadder } from "@/components/ladder";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { SkeletonTable } from "@/components/vis";
 
 type NavView = {
   navUsd: number;
@@ -173,7 +174,7 @@ export default function Treasury() {
         {(d?.accounts ?? []).map((a) => (
           <AccountCard key={a.account} a={a} />
         ))}
-        {!d && <div className="p-4 text-[12px] text-dim">Loading accounts…</div>}
+        {!d && <SkeletonTable rows={4} cols={4} label="Loading accounts" />}
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.15fr_1fr]">

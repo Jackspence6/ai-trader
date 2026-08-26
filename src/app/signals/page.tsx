@@ -19,6 +19,7 @@ import { REJECTION_LABELS, type RejectionCode } from "@/lib/calc/gate";
 import type { ScoredOpportunity } from "@/lib/engine/scanner";
 import type { VenueError } from "@/lib/market/types";
 import { cx, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { Empty } from "@/components/vis";
 
 type SignalsResponse = {
   asOf: number;
@@ -204,9 +205,11 @@ export default function SignalsPage() {
 function OpportunityTable({ rows }: { rows: ScoredOpportunity[] }) {
   if (rows.length === 0) {
     return (
-      <div className="p-4 text-[12px] text-dim">
-        No opportunities match this filter.
-      </div>
+      <Empty
+        kind="idle"
+        title="NOTHING MATCHES THIS FILTER"
+        body="Every opportunity the engine scored is here, taken or rejected. Widen the filter to see the rejections and the reason each one was turned down."
+      />
     );
   }
 

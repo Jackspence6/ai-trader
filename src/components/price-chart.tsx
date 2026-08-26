@@ -15,6 +15,7 @@
 
 import { useMemo, useState } from "react";
 import { cx } from "./ui";
+import { Empty, SkeletonChart } from "./vis";
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 
@@ -46,10 +47,15 @@ export function CandleChart({
   candles,
   overlays = [],
   height = 300,
+  loading = false,
 }: {
   candles: Candle[];
   overlays?: { label: string; values: (number | null)[]; color: string }[];
   height?: number;
+  /** Draw a chart-shaped skeleton instead of an empty state. The two look the
+   *  same to the code and mean opposite things to the reader: "still coming"
+   *  versus "there is none". */
+  loading?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
 
@@ -69,13 +75,19 @@ export function CandleChart({
     return { s, step, bodyW };
   }, [candles, overlays, height]);
 
+  if (loading) {
+    return <SkeletonChart height={height} />;
+  }
+
   if (!geom || candles.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center text-[11px] text-dim"
-        style={{ height }}
-      >
-        No price history available
+      <div className="flex items-center justify-center" style={{ height }}>
+        <Empty
+          compact
+          kind="idle"
+          title="NO PRICE HISTORY"
+          body="The recorder has not captured candles for this asset and interval yet."
+        />
       </div>
     );
   }
@@ -229,11 +241,13 @@ export function FundingChart({
 
   if (points.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center text-[11px] text-dim"
-        style={{ height }}
-      >
-        No funding history available
+      <div className="flex items-center justify-center" style={{ height }}>
+        <Empty
+          compact
+          kind="idle"
+          title="NO FUNDING HISTORY"
+          body="Funding prints are recorded as they settle; none have landed for this asset yet."
+        />
       </div>
     );
   }

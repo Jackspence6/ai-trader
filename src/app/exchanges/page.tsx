@@ -19,6 +19,7 @@ import { Money } from "@/lib/currency";
 import type { CredentialMeta, VenueId } from "@/lib/vault/store";
 import type { Balance } from "@/lib/vault/venues";
 import { cx, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { SkeletonTable } from "@/components/vis";
 
 type CredentialsResponse = { vaultReady: boolean; credentials: CredentialMeta[] };
 
@@ -419,7 +420,7 @@ function AddCredential({
 /* -------------------------------------------------------------- balances */
 
 function BalanceTable({ data }: { data: BalancesResponse | null }) {
-  if (!data) return <div className="p-4 text-[12px] text-dim">Loading…</div>;
+  if (!data) return <SkeletonTable rows={4} cols={4} label="Loading exchanges" />;
 
   if (data.note) {
     return <div className="p-4 text-[12px] text-dim">{data.note}</div>;

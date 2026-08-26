@@ -11,8 +11,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  balancedStakes, depthCapacityUsd, effectiveBuyPrice, effectiveDecimalOdds,
-  margin as arbMargin, naturalizeStakes,
+  balancedStakes, depthCapacityUsd, effectiveBuyPrice, effectiveDecimalOdds, naturalizeStakes,
 } from "./arb";
 import { scoreOpportunity } from "./scoring";
 import {

@@ -15,8 +15,9 @@
  * about before the second leg goes on.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Panel, Micro, Stat, cx } from "@/components/ui";
+import { useNow } from "@/components/vis";
 import { apiPost } from "@/lib/events/api";
 import {
   durationShort,
@@ -60,12 +61,12 @@ export function StakePlan({
 }) {
   const [total, setTotal] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const now = useNow(1000);
 
-  // A new opportunity gets its own sizing, not the last one's.
-  useEffect(() => {
-    setTotal(null);
-    setFeedback(null);
-  }, [opp?.id]);
+  // A new opportunity gets its own sizing, not the last one's. The caller keys
+  // this component on the opportunity id, so React remounts it and both pieces
+  // of state start fresh — no effect, and no frame where the previous row's
+  // stake is shown against the new row's odds.
 
   const T = total ?? opp?.total_stake_zar ?? 10000;
   const calc = useMemo(() => (opp ? computeStakes(opp.legs, T) : null), [opp, T]);
@@ -122,7 +123,9 @@ export function StakePlan({
           <span className="tnum text-muted">
             {durationShort(
               opp.state === "active"
-                ? (Date.now() - new Date(opp.first_seen).getTime()) / 1000
+                ? now
+                  ? (now - new Date(opp.first_seen).getTime()) / 1000
+                  : null
                 : opp.window_s,
             )}
           </span>

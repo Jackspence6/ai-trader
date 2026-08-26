@@ -19,6 +19,7 @@ import { UNIVERSE, type MarketSnapshot, type Quote } from "@/lib/market/types";
 import type { FxRates } from "@/lib/market/fx";
 import { CandleChart, FundingChart, type Candle } from "@/components/price-chart";
 import { cx, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { Empty, SkeletonTable } from "@/components/vis";
 
 type MarketsResponse = MarketSnapshot & { fx: FxRates };
 
@@ -425,7 +426,7 @@ function FundingRegimeFooter({
   if (!regime) {
     return (
       <div className="border-t border-line px-3 py-2.5 text-[11px] text-dim">
-        No funding history available for this asset.
+        No funding print has settled for this asset since the recorder started.
       </div>
     );
   }
@@ -455,7 +456,14 @@ function FundingRegimeFooter({
 
 function VenueTable({ quotes }: { quotes: Quote[] }) {
   if (quotes.length === 0) {
-    return <div className="p-3 text-[11px] text-dim">No venue data.</div>;
+    return (
+      <Empty
+        compact
+        kind="idle"
+        title="NO VENUE DATA"
+        body="No exchange is currently quoting this asset."
+      />
+    );
   }
   const sorted = [...quotes].sort(
     (a, b) => a.venue.localeCompare(b.venue) || a.kind.localeCompare(b.kind),
@@ -532,7 +540,7 @@ function FullTable({
   );
 
   if (rows.length === 0) {
-    return <div className="p-3 text-[11px] text-dim">Loading live markets…</div>;
+    return <SkeletonTable rows={6} cols={6} label="Loading live markets" />;
   }
 
   return (

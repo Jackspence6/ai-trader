@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Panel, Micro, Stat, Tag, StatusDot, cx } from "@/components/ui";
+import { Panel, Stat, Tag, StatusDot, cx } from "@/components/ui";
 import { zar, pct } from "@/lib/events/format";
 
 type Status = {

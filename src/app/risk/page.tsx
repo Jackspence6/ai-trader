@@ -16,6 +16,7 @@ import type { HaltEvent, HaltState, SweepResult } from "@/lib/killswitch";
 import type { EngineConfig } from "@/lib/engine/config";
 import { computePortfolio } from "@/lib/portfolio/sleeves";
 import { cx, Meter, Micro, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { SkeletonTable } from "@/components/vis";
 
 type HaltResponse = { state: HaltState; audit: HaltEvent[] };
 
@@ -307,7 +308,7 @@ export default function RiskPage() {
               </Stat>
             </div>
           ) : (
-            <p className="text-[11px] text-dim">Loading…</p>
+            <SkeletonTable rows={3} cols={3} label="Loading risk limits" />
           )}
           <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-dim">
             Enforced two ways: the risk gate bounds every intent up front, and

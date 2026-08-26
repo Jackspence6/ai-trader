@@ -23,6 +23,7 @@ import { resolveTier } from "@/lib/calc/tiers";
 import type { AuditEntry } from "@/lib/engine/store";
 import { Money } from "@/lib/currency";
 import { cx, Micro, Panel, Stat, Tag } from "@/components/ui";
+import { SkeletonTable } from "@/components/vis";
 
 type ConfigResponse = { config: EngineConfig; audit: AuditEntry[] };
 
@@ -113,7 +114,7 @@ export default function ControlPage() {
   }
 
   if (!draft || !saved) {
-    return <div className="p-4 text-[12px] text-dim">Loading configuration…</div>;
+    return <SkeletonTable rows={8} cols={3} label="Loading configuration" />;
   }
 
   const tier = resolveTier(draft.navUsd, 0, "T0").current;

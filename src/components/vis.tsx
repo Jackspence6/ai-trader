@@ -23,7 +23,7 @@
  * cannot carry two meanings.
  */
 
-import { type ReactNode } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import NumberFlow from "@number-flow/react";
 import { cx, Micro } from "./ui";
 
@@ -344,5 +344,59 @@ export function LivePulse({ label = "LIVE", stale }: { label?: string; stale?: b
       />
       {stale ? "STALE" : label}
     </span>
+  );
+}
+
+
+/* ------------------------------------------------------------------ clock */
+
+/**
+ * A ticking "now", safe to read during render.
+ *
+ * Calling `Date.now()` in a component body is impure: the server and the first
+ * client render disagree, React logs a hydration mismatch, and any value
+ * derived from it — "open for 4s", "flashed 200ms ago" — is computed against a
+ * timestamp that never updates again on its own.
+ *
+ * The wall clock is an external store, so it is subscribed to as one. That is
+ * not ceremony: `useSyncExternalStore` gives the server snapshot (0) and the
+ * client snapshot separately, which is exactly the split that makes the first
+ * paint agree, and it schedules the update without the extra render pass that
+ * a setState-in-an-effect costs on every tick.
+ *
+ * Callers treat 0 as "not yet known" and render the resting state.
+ */
+const clock = {
+  now: 0,
+  listeners: new Set<() => void>(),
+  timer: null as ReturnType<typeof setInterval> | null,
+};
+
+function subscribeClock(interval: number) {
+  return (onChange: () => void) => {
+    clock.listeners.add(onChange);
+    if (!clock.timer) {
+      clock.now = Date.now();
+      clock.timer = setInterval(() => {
+        clock.now = Date.now();
+        clock.listeners.forEach((l) => l());
+      }, interval);
+    }
+    return () => {
+      clock.listeners.delete(onChange);
+      if (clock.listeners.size === 0 && clock.timer) {
+        clearInterval(clock.timer);
+        clock.timer = null;
+      }
+    };
+  };
+}
+
+export function useNow(intervalMs = 1000): number {
+  const subscribe = useMemo(() => subscribeClock(intervalMs), [intervalMs]);
+  return useSyncExternalStore(
+    subscribe,
+    () => clock.now,
+    () => 0,
   );
 }

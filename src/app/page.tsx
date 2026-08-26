@@ -25,6 +25,7 @@ import type { MarketSnapshot } from "@/lib/market/types";
 import { TierLadder } from "@/components/ladder";
 import { DeskStrip } from "@/components/desk-strip";
 import { cx, Delta, Micro, Num, Panel, Stat, StatusDot, Tag } from "@/components/ui";
+import { Empty, SkeletonTable } from "@/components/vis";
 
 /* ------------------------------------------------------------- response types */
 
@@ -447,9 +448,15 @@ function CryptoSignals({ opps, connecting }: { opps: ScoredOpportunity[]; connec
       flush
     >
       {opps.length === 0 ? (
-        <div className="p-4 text-[12px] text-dim">
-          {connecting ? "Scanning live markets…" : "No opportunities scored in the latest scan."}
-        </div>
+        connecting ? (
+          <SkeletonTable rows={4} cols={6} label="Scanning live markets" />
+        ) : (
+          <Empty
+            kind="idle"
+            title="NOTHING SCORED THIS PASS"
+            body="Every venue answered and nothing cleared the gates. The engine's job is to be silent most of the time."
+          />
+        )
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
@@ -590,7 +597,7 @@ function BasisPanel({ signals, connecting }: { signals: BasisSignal[]; connectin
     >
       {signals.length === 0 ? (
         <div className="p-4 text-[12px] text-dim">
-          {connecting ? "Reading dated futures…" : "No quarterly futures basis available right now."}
+          {connecting ? "Reading dated futures…" : "No quarterly futures basis is currently quoted."}
         </div>
       ) : (
         <div className="overflow-x-auto">

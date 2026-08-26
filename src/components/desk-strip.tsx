@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { useLive } from "@/lib/live";
-import { Panel, Micro, Stat, Tag, StatusDot, cx } from "@/components/ui";
+import { Panel, Stat, StatusDot } from "@/components/ui";
 import { DESKS } from "@/lib/nav";
 
 type EventsSummary = {
