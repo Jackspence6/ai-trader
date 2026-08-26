@@ -107,7 +107,7 @@ export default function ExchangesPage() {
   const blocked = creds.filter((c) => c.permissions?.withdrawals);
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {!vaultReady && <VaultKeyBanner />}
       {blocked.length > 0 && <WithdrawalBlockBanner count={blocked.length} />}
 

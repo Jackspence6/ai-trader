@@ -127,7 +127,7 @@ export default function CommandCenter() {
   const venuesDown = markets.data?.errors.length ?? 0;
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <StatusStrip
         nature={fund?.nav.nature ?? "none"}
         halted={halted}
@@ -531,9 +531,16 @@ function ForexSignals({ signals, connecting }: { signals: FxSignal[]; connecting
       flush
     >
       {signals.length === 0 ? (
-        <div className="p-4 text-[12px] text-dim">
-          {connecting ? "Scoring FX pairs…" : "Forex feed unavailable right now."}
-        </div>
+        connecting ? (
+          <SkeletonTable rows={3} cols={5} label="Scoring FX pairs" />
+        ) : (
+          <Empty
+            kind="fault"
+            compact
+            title="FOREX FEED UNAVAILABLE"
+            body="The ECB reference rates could not be read. FX carry cannot be scored without them."
+          />
+        )
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
@@ -596,9 +603,16 @@ function BasisPanel({ signals, connecting }: { signals: BasisSignal[]; connectin
       flush
     >
       {signals.length === 0 ? (
-        <div className="p-4 text-[12px] text-dim">
-          {connecting ? "Reading dated futures…" : "No quarterly futures basis is currently quoted."}
-        </div>
+        connecting ? (
+          <SkeletonTable rows={3} cols={5} label="Reading dated futures" />
+        ) : (
+          <Empty
+            kind="idle"
+            compact
+            title="NO DATED BASIS QUOTED"
+            body="No venue is currently quoting a quarterly future against spot for the tracked assets."
+          />
+        )
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
@@ -681,7 +695,7 @@ function MarketMovers({ snapshot }: { snapshot: MarketSnapshot | null }) {
       flush
     >
       {rows.length === 0 ? (
-        <div className="p-4 text-[12px] text-dim">Connecting to venues…</div>
+        <SkeletonTable rows={4} cols={5} label="Connecting to venues" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">

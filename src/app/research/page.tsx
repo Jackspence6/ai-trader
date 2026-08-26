@@ -145,7 +145,7 @@ export default function ResearchPage() {
   const profitable = (s?.totalReturnPct ?? 0) > 0;
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <RevalidationPanel />
 
       <Panel

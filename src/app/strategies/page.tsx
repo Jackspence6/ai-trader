@@ -155,7 +155,7 @@ export default function StrategiesPage() {
     research.data?.latest?.rows.find((r) => r.code === code);
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {/* ------------------------------------------------ how we make money */}
       <Panel label="HOW WE MAKE MONEY" hint="THE THESIS, IN PLAIN LANGUAGE">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

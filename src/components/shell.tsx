@@ -49,8 +49,11 @@ type LadderResponse = {
   blockedBy: string | null;
 };
 
+type FundNature = "simulated" | "real" | "mixed" | "none";
+
 type ShellData = {
   halt: LiveState<{ state: { halted: boolean } }>;
+  fund: LiveState<{ nav: { nature: FundNature } }>;
   config: LiveState<{ config: EngineConfig }>;
   markets: LiveState<MarketSnapshot>;
   positions: LiveState<{ open: number; isLive: boolean }>;
@@ -63,6 +66,79 @@ function useShellData(): ShellData {
   const d = useContext(ShellCtx);
   if (!d) throw new Error("useShellData outside Shell");
   return d;
+}
+
+/* -------------------------------------------------------------- Trade mode */
+
+/**
+ * Which money is at risk, on every screen.
+ *
+ * This is derived from the capital ledger rather than from a configuration
+ * flag, and that distinction is the whole point: a flag says what someone
+ * intended, the ledger says what was actually deposited. A system that believes
+ * it is in paper mode while holding real capital is the single worst state this
+ * interface could fail to show.
+ *
+ * PAPER is quiet — it is the resting state and should not shout. LIVE is
+ * deliberately loud, and paints a hairline across the top of the viewport as
+ * well as the chip, so that a screenshot taken from any screen carries the
+ * fact. MIXED is louder still, because a book holding both at once is a
+ * reconciliation problem before it is anything else.
+ */
+function TradeMode() {
+  const { fund } = useShellData();
+  const nature = fund.data?.nav.nature ?? null;
+
+  if (nature === null) {
+    return (
+      <span className="micro flex h-7 items-center gap-1.5 border border-line-bright px-2 text-dim">
+        <span className="block size-1.5 rounded-full bg-dim" />
+        MODE
+      </span>
+    );
+  }
+
+  const live = nature === "real" || nature === "mixed";
+  const label =
+    nature === "real" ? "LIVE CAPITAL" : nature === "mixed" ? "MIXED CAPITAL" : "PAPER";
+
+  return (
+    <>
+      {live && (
+        <span
+          aria-hidden
+          className={cx(
+            "pointer-events-none fixed inset-x-0 top-0 z-50 h-[2px]",
+            nature === "mixed" ? "bg-warn" : "bg-down",
+          )}
+        />
+      )}
+      <span
+        title={
+          live
+            ? "Real capital is deposited against this book. Orders move money."
+            : "Simulated capital only. Fills are against a pessimistic paper venue; no money is at a broker."
+        }
+        className={cx(
+          "micro flex h-7 items-center gap-1.5 border px-2",
+          nature === "real"
+            ? "border-down bg-down/15 text-down"
+            : nature === "mixed"
+              ? "border-warn bg-warn/15 text-warn"
+              : "border-line-bright text-muted",
+        )}
+      >
+        <span
+          className={cx(
+            "block size-1.5 rounded-full",
+            nature === "real" ? "bg-down" : nature === "mixed" ? "bg-warn" : "bg-dim",
+          )}
+          style={live ? { animation: "breathe 2s var(--ease-out) infinite" } : undefined}
+        />
+        {label}
+      </span>
+    </>
+  );
 }
 
 /* ------------------------------------------------------------- Kill switch */
@@ -633,6 +709,7 @@ function TopBar({
         <div className="hidden border-l border-line pl-3 sm:block">
           <Clock />
         </div>
+        <TradeMode />
         <KillSwitch />
       </div>
     </header>
@@ -679,10 +756,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const markets = useLive<MarketSnapshot>("/api/markets", 20_000);
   const positions = useLive<{ open: number; isLive: boolean }>("/api/positions", 30_000);
   const ladder = useLive<LadderResponse>("/api/ladder", 60_000);
+  const fund = useLive<{ nav: { nature: FundNature } }>("/api/fund", 30_000);
 
   const data = useMemo<ShellData>(
-    () => ({ halt, config, markets, positions, ladder }),
-    [halt, config, markets, positions, ladder],
+    () => ({ halt, config, markets, positions, ladder, fund }),
+    [halt, config, markets, positions, ladder, fund],
   );
 
   // Restore the operator's rail preference after mount — reading localStorage
@@ -734,7 +812,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
             onOpenPalette={() => setPaletteOpen(true)}
           />
           <PageHeader />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
+          {/* Keyed on the route so each screen animates in rather than snapping.
+              A 320ms rise is long enough to read as a transition and short
+              enough that nobody waits for it; the key is what makes React treat
+              a navigation as a mount instead of a re-render. */}
+          <main
+            key={path}
+            className="rise flex-1 overflow-y-auto overflow-x-hidden p-3"
+          >
+            {children}
+          </main>
         </div>
       </div>
       <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />

@@ -76,7 +76,7 @@ export default function SystemPage() {
   const sum = data?.summary;
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <LoopBanner health={engine.data?.health} />
       <RecorderBanner liveness={live} />
 

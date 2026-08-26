@@ -42,7 +42,7 @@ function LockFallback() {
     <main className="flex min-h-dvh items-center justify-center bg-bg px-4">
       <div className="w-full max-w-[380px]">
         <div className="mx-auto size-[190px]" />
-        <p className="micro mt-9 text-center text-dim">MUSKET GOOSE</p>
+        <p className="micro mt-9 text-center text-dim">MERIDIAN</p>
       </div>
     </main>
   );
@@ -135,10 +135,10 @@ function LockScreen() {
           style={{ animation: "fade-rise 0.5s ease-out both", animationDelay: "0.1s" }}
         >
           <h1 className="text-[15px] font-medium tracking-[0.22em] text-ink">
-            MUSKET GOOSE
+            MERIDIAN
           </h1>
           <p className="micro mt-2 text-dim">
-            {granted ? "ACCESS GRANTED" : busy ? "VERIFYING" : "AUTONOMOUS TRADING · RESTRICTED"}
+            {granted ? "ACCESS GRANTED" : busy ? "VERIFYING" : "ASSET MARKETS · EVENT MARKETS · RESTRICTED"}
           </p>
         </div>
 

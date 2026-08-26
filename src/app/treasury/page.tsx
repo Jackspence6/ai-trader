@@ -93,7 +93,7 @@ export default function Treasury() {
   const tier = resolveTier(nav?.navUsd ?? 0, 0, "T0");
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {nav && <NatureBanner nature={nav.nature} funded={nav.funded} />}
         <div className="ml-auto flex items-center gap-2">

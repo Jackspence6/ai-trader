@@ -29,11 +29,15 @@ export function Panel({
         className,
       )}
     >
+      {/* The header wraps rather than overlapping. A panel title and its
+          right-hand control are both fixed-width content, and below ~420px they
+          cannot share a line — letting them collide was the one place the
+          layout broke on a phone. */}
       {label && (
-        <header className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <h2 className="micro text-muted whitespace-nowrap">{label}</h2>
-            {hint && <span className="micro text-dim truncate">{hint}</span>}
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-3 py-2">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h2 className="micro whitespace-nowrap text-muted">{label}</h2>
+            {hint && <span className="micro truncate text-dim">{hint}</span>}
           </div>
           {right && <div className="shrink-0">{right}</div>}
         </header>

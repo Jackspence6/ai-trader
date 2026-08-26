@@ -90,7 +90,7 @@ export default function PositionsPage() {
   const open = d?.positions.filter((p) => p.qty !== 0) ?? [];
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 border border-accent/25 bg-accent/5 px-3 py-2.5">
         <Tag tone="accent">PAPER</Tag>
         <span className="text-[12px] text-muted">

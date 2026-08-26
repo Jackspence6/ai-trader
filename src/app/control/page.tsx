@@ -120,7 +120,7 @@ export default function ControlPage() {
   const tier = resolveTier(draft.navUsd, 0, "T0").current;
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {/* -------------------------------------------------------- header */}
       <Panel
         label="ENGINE CONTROL"

@@ -159,7 +159,7 @@ export default function PortfoliosPage() {
   }, [data, draft, reason, live, cfg]);
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {/* ------------------------------------------------ headline numbers */}
       <div className="grid grid-cols-3 gap-3">
         <Panel>

@@ -77,7 +77,7 @@ export default function PerformancePage() {
           : (r?.bySleeve ?? []);
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {/* -------------------------------------------- 1 · is it working? */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Panel>

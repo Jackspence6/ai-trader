@@ -77,7 +77,7 @@ export default function MarketsPage() {
   );
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       <AssetStrip
         quotes={quotes}
         selected={asset}
@@ -178,7 +178,7 @@ export default function MarketsPage() {
         right={<FeedState status={markets.status} age={markets.ageSeconds} />}
         flush
       >
-        <FullTable quotes={quotes} onSelect={setAsset} selected={asset} />
+        <FullTable quotes={quotes} onSelect={setAsset} selected={asset} feed={markets.status} />
       </Panel>
 
       {markets.data && markets.data.errors.length > 0 && (
@@ -423,13 +423,9 @@ function FundingRegimeFooter({
 }: {
   regime: CandlesResponse["funding"]["regime"];
 }) {
-  if (!regime) {
-    return (
-      <div className="border-t border-line px-3 py-2.5 text-[11px] text-dim">
-        No funding print has settled for this asset since the recorder started.
-      </div>
-    );
-  }
+  // The chart above already says there is no funding history for this asset;
+  // repeating it in a footer underneath is noise.
+  if (!regime) return null;
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line px-3 py-3 sm:grid-cols-4">
       <Stat label="MEDIAN APR" sub={<span className="text-dim">robust to spikes</span>}>
@@ -522,10 +518,15 @@ function FullTable({
   quotes,
   onSelect,
   selected,
+  feed,
 }: {
   quotes: Quote[];
   onSelect: (a: string) => void;
   selected: string;
+  /** The feed's own connection state, so an empty table can say whether it is
+   *  still loading or whether every venue refused. A skeleton that shimmers
+   *  forever is the worst of the three states to be in and the easiest to ship. */
+  feed: "connecting" | "live" | "stale" | "error";
 }) {
   const { code } = useCurrency();
   const rows = useMemo(
@@ -540,6 +541,24 @@ function FullTable({
   );
 
   if (rows.length === 0) {
+    if (feed === "error") {
+      return (
+        <Empty
+          kind="fault"
+          title="NO VENUE ANSWERED"
+          body="Every exchange feed failed. Check outbound network from this machine — the venue errors are listed below."
+        />
+      );
+    }
+    if (feed === "stale") {
+      return (
+        <Empty
+          kind="fault"
+          title="FEED HAS GONE QUIET"
+          body="The last successful read is older than this screen is willing to present as live."
+        />
+      );
+    }
     return <SkeletonTable rows={6} cols={6} label="Loading live markets" />;
   }
 

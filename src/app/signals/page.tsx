@@ -62,7 +62,7 @@ export default function SignalsPage() {
   }, [all]);
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {data?.usingShadowSize && (
         <div className="flex flex-wrap items-center gap-2 border border-warn/30 bg-warn/5 px-3 py-2.5">
           <Tag tone="warn">SHADOW</Tag>

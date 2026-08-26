@@ -80,7 +80,7 @@ export default function RiskPage() {
   }
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3">
       {/* ----------------------------------------------------- kill switch */}
       <Panel
         label="KILL SWITCH"
