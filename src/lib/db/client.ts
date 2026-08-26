@@ -20,11 +20,28 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
  * Port 5433 by default to match docker-compose, which deliberately avoids
  * colliding with a Postgres someone already runs on 5432.
  */
+/**
+ * The one place the connection string is resolved.
+ *
+ * `DB_URL` is accepted as well as `DATABASE_URL` because the events engine has
+ * always used that name and its Compose service still sets it. Resolving the
+ * two names in two modules is how you end up with one desk writing to the
+ * database and the other writing to a different one, both convinced they are
+ * correct.
+ */
 export function databaseUrl(): string {
   return (
     process.env.DATABASE_URL ??
-    "postgresql://trader:trader@localhost:5433/aitrader"
+    process.env.DB_URL ??
+    "postgresql://trader:trader@localhost:5433/meridian"
   );
+}
+
+/** Whether a connection string was configured at all, as opposed to falling
+ *  back to the local default. Screens use this to distinguish "not wired up"
+ *  from "wired up and empty". */
+export function databaseConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL ?? process.env.DB_URL);
 }
 
 let pool: Pool | null = null;

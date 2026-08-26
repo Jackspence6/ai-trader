@@ -80,7 +80,7 @@ const server = createServer(async (req, res) => {
           error: "A reason is required to resume. Restarting a system that stopped itself is a decision worth recording.",
         });
       }
-      const state = await clear(reason, "http", body.actor ?? null);
+      const { state } = await clear(reason, "http", body.actor ?? null);
       console.log(`[${new Date().toISOString()}] RESUME — ${reason}`);
       return json(res, 200, { state });
     }

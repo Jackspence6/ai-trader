@@ -200,10 +200,52 @@ describe("kill switch orchestration", () => {
     const { trip, clear } = await import("./index");
     const { readAudit } = await load();
     await trip("stop", "cli");
-    const state = await clear("resolved", "cli", "tester");
+    const { state, desks } = await clear("resolved", "cli", "tester");
     expect(state.halted).toBe(false);
+    // The other desk is released too. With no database configured it reports
+    // that it could not be reached rather than silently claiming success.
+    expect(desks).toHaveLength(1);
+    expect(desks[0].desk).toBe("events");
     const audit = await readAudit();
     expect(audit[0].action).toBe("resume");
     expect(audit[0].reason).toBe("resolved");
+  });
+});
+
+/**
+ * The halt has to reach both desks.
+ *
+ * These are the tests for the bug the merge introduced: the Asset Markets loop
+ * reads the halt state this package owns, and the Python events engine reads a
+ * row in its own schema, so stopping one did nothing to the other. An operator
+ * seeing a red HALTED chip reasonably believes everything stopped — which makes
+ * a half-working kill switch more dangerous than none.
+ */
+describe("kill switch spans both desks", () => {
+  it("trip() reports what happened to every desk, not just this one", async () => {
+    const { trip } = await import("./index");
+    const { desks } = await trip("stop everything", "cli");
+    expect(desks.map((d) => d.desk)).toEqual(["events"]);
+  });
+
+  it("a desk that could not be reached says so rather than reporting success", async () => {
+    // No DATABASE_URL is set in the test environment, so the events desk cannot
+    // be written to. The result must record that, because "applied: true" here
+    // would be a lie that an operator would act on.
+    const { trip } = await import("./index");
+    const { desks } = await trip("stop everything", "cli");
+    const events = desks.find((d) => d.desk === "events")!;
+    expect(events.applied).toBe(false);
+    expect(events.note).toMatch(/no database configured/i);
+  });
+
+  it("the halt itself still sticks when the other desk is unreachable", async () => {
+    // Ordering guarantee: local state is written before anything that can fail.
+    const { trip } = await import("./index");
+    const { readHalt } = await load();
+    const { state, desks } = await trip("stop everything", "cli");
+    expect(state.halted).toBe(true);
+    expect((await readHalt()).halted).toBe(true);
+    expect(desks[0].applied).toBe(false);
   });
 });

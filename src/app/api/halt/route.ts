@@ -42,8 +42,8 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const state = await clear(reason, "dashboard", actor);
-    return Response.json({ state }, { headers: { "cache-control": "no-store" } });
+    const { state, desks } = await clear(reason, "dashboard", actor);
+    return Response.json({ state, desks }, { headers: { "cache-control": "no-store" } });
   }
 
   return Response.json({ error: "action must be 'halt' or 'resume'" }, { status: 400 });

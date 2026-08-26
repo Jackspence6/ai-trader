@@ -49,7 +49,10 @@ async function main() {
         );
         process.exit(1);
       }
-      await clear(arg, "cli", process.env.USER ?? null);
+      const { desks } = await clear(arg, "cli", process.env.USER ?? null);
+      for (const d of desks) {
+        if (!d.applied) console.warn(`  ! ${d.desk} desk not released: ${d.note}`);
+      }
       console.log(`\n  Resumed: ${arg}\n`);
       break;
     }

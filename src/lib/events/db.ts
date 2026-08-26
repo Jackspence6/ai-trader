@@ -19,39 +19,42 @@
  */
 
 import { Pool as NeonPool } from "@neondatabase/serverless";
-import { Pool as PgPool } from "pg";
-
-export type AnyPool = NeonPool | PgPool;
+import { getPool as firmPool, databaseUrl, databaseConfigured } from "@/lib/db/client";
 
 export const EVENTS_SCHEMA = "events";
 
-let pool: AnyPool | null = null;
+let neon: NeonPool | null = null;
 
 export function dbUrl(): string | null {
-  return process.env.DATABASE_URL ?? process.env.DB_URL ?? null;
+  return databaseConfigured() ? databaseUrl() : null;
 }
 
 export function hasDb(): boolean {
-  return Boolean(dbUrl());
+  return databaseConfigured();
 }
 
 export function isNeon(url: string): boolean {
   return /neon\.tech|neon\.build/i.test(url);
 }
 
-export function getPool(): AnyPool {
+/**
+ * The pool this desk borrows from.
+ *
+ * On anything but Neon this is the *firm's* pool, not a second one. Two pools
+ * against the same database doubles the connection count for no benefit, and
+ * before this they also resolved their connection strings separately — so a box
+ * with `DB_URL` set but not `DATABASE_URL` had the two desks pointed at
+ * different databases while both reported healthy.
+ *
+ * Neon keeps its own pool because its serverless driver speaks a WebSocket
+ * protocol that node-postgres cannot, and the hosted deployment still needs it.
+ */
+function pool() {
   const url = dbUrl();
   if (!url) throw new Error("DATABASE_URL is not set");
-  if (!pool) {
-    pool = isNeon(url)
-      ? new NeonPool({ connectionString: url })
-      : new PgPool({
-          connectionString: url,
-          ssl: /sslmode=require/i.test(url) ? { rejectUnauthorized: false } : undefined,
-          max: 5,
-        });
-  }
-  return pool;
+  if (!isNeon(url)) return firmPool();
+  if (!neon) neon = new NeonPool({ connectionString: url });
+  return neon;
 }
 
 /** Minimal client surface both drivers satisfy — the union of their own types
@@ -64,7 +67,7 @@ export interface DbClient {
 /** Checked-out connection for multi-statement work (migrations, transactions),
  *  already pointed at this desk's schema. */
 export async function getClient(): Promise<DbClient> {
-  const client = (await (getPool() as PgPool).connect()) as unknown as DbClient;
+  const client = (await (pool() as { connect: () => Promise<unknown> }).connect()) as DbClient;
   await client.query(`SET search_path TO ${EVENTS_SCHEMA}, public`);
   return client;
 }
