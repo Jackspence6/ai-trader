@@ -5,6 +5,18 @@ and why. Grouped by what it protects rather than by file.
 
 ## Bugs that would have shown up on the deployment machine
 
+**A failed poll waited a full interval before trying again.** Every screen polls
+while the login page is showing, and every one of those polls is refused —
+correctly, the site is locked. `useLive` then waited the endpoint's whole
+interval before retrying. For `/api/execution`, which polls at 60 seconds, that
+meant the badge answering "is real money at risk?" stayed on its placeholder
+for up to a minute after signing in, which is the one moment anybody reads it;
+venue health was blank for the same reason. Failures now back off from 1.5s,
+doubling, capped at the endpoint's own cadence — quick recovery, never faster
+than the endpoint asked for, and an endpoint that stays dead settles at exactly
+the rate it would have had anyway. Found by running the deployment bundle the
+way the deployment machine will: no database, nothing else up.
+
 **The console had been rendering in the wrong typeface since the first commit
 of this pass.** `next/font/google` fetches font files at build time, this box
 has no route to `fonts.gstatic.com`, and the workaround was a swap script:

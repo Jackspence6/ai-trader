@@ -51,6 +51,12 @@ manual-placement charter — incompatible, not hard); narrow fast
 prediction-market gaps (a bot fight; we would be the retail entrant funding the
 winners, the same argument that rejected MEV).
 
+**Also shipped 2026-08-26, for the deployment box specifically:** a Windows
+bootstrap, a build-memory cap, `pnpm bundle` (a prebuilt console needing only
+Node — no package manager, no build, no Docker, and platform-independent), the
+`docs/deploy-old-machine.md` walkthrough, and a fix to the polling hook that
+left the execution-mode badge blank for a minute after signing in.
+
 **Shipped in the deployment-readiness pass (2026-08-26).** One execution seam
 deciding which money is at risk; one kill switch reaching both desks; one pool
 and one database name; the stake-plan rounding bug; preflight, `.env.example`
