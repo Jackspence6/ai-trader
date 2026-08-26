@@ -5,13 +5,20 @@
 # Docker. Docker Desktop on Windows needs WSL2 and about 2GB of its own, which
 # on the kind of machine this script exists for is the difference between a
 # console that runs and one that swaps itself to a standstill. The database and
-# the events engine are a second, optional step — see docs/deploy-old-machine.md.
+# the events engine are a second, optional step - see docs/deploy-old-machine.md.
 #
 # Run it from a PowerShell window opened in the repository folder:
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 #
 # Safe to re-run. It never overwrites .env.local.
+#
+# Keep this file ASCII-only. Windows PowerShell 5.1 - still the default shell on
+# Windows 10 - reads a file with no BOM as CP1252, where the three UTF-8 bytes of
+# an em dash decode as a curly closing quote. Inside a double-quoted string that
+# ends the string early, and the parser then fails several lines later with a
+# misleading "Missing closing '}'". PowerShell 7 defaults to UTF-8 and never
+# sees it, which is why this survived review.
 
 $ErrorActionPreference = "Stop"
 
@@ -32,7 +39,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 
 $nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
 if ($nodeMajor -lt 22) {
-  No "Node $(node --version) is too old — this needs 22 or newer."
+  No "Node $(node --version) is too old - this needs 22 or newer."
   Write-Host "     https://nodejs.org, take the LTS download." -ForegroundColor Gray
   exit 1
 }
@@ -50,9 +57,9 @@ Say "Dependencies"
 # if the lockfile and package.json disagree, which is worth knowing about.
 pnpm install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) {
-  No "frozen install failed — falling back to a normal install"
+  No "frozen install failed - falling back to a normal install"
   pnpm install
-  if ($LASTEXITCODE -ne 0) { No "install failed — see above"; exit 1 }
+  if ($LASTEXITCODE -ne 0) { No "install failed - see above"; exit 1 }
 }
 Ok "packages installed"
 
@@ -63,7 +70,7 @@ Say "Build"
 $env:NODE_OPTIONS = "--max-old-space-size=2048"
 pnpm build
 if ($LASTEXITCODE -ne 0) {
-  No "build failed — see above"
+  No "build failed - see above"
   Write-Host "     If it ran out of memory, use the prebuilt bundle instead:" -ForegroundColor Gray
   Write-Host "     docs\deploy-old-machine.md, section 'If the build will not finish'." -ForegroundColor Gray
   exit 1
@@ -82,12 +89,12 @@ if (-not (Test-Path ".env.local")) {
 
 Say "Preflight"
 pnpm preflight
-if ($LASTEXITCODE -eq 0) { Ok "preflight clean" } else { No "preflight found problems — read them above" }
+if ($LASTEXITCODE -eq 0) { Ok "preflight clean" } else { No "preflight found problems - read them above" }
 
 Say "Next"
 Write-Host @"
   pnpm start                     the console on :3000
-  pnpm trade -- --interval 300   the Asset Markets loop — exactly one instance
+  pnpm trade -- --interval 300   the Asset Markets loop - exactly one instance
   pnpm record                    the market-data recorder
 
   The database and the events engine need Docker and are a separate step.
