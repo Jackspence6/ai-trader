@@ -1,8 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
+# Dependencies
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -10,33 +8,37 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
-/.next/
+# Build output
+.next/
 /out/
-
-# production
 /build
+/coverage
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.vercel
 
-# misc
-.DS_Store
-*.pem
+# next-env.d.ts is deliberately NOT ignored. Next regenerates it on build, but
+# a clean checkout should typecheck before anything is built, and tsconfig
+# includes it by name.
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Local runtime state: engine config, the credential vault (encrypted, but
+# never commit it), the paper book, and every log any of the processes write.
+.data/
+*.log
 
-# env files (can opt-in for committing if needed)
+# Secrets. .env.example is the documented template and is the one exception.
 .env*
 !.env.example
+*.pem
+
+# Python (Event Markets engine)
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
-
-# Python virtualenv for the events engine tests (see scripts/setup-engine.mjs)
+# Virtualenv for running the engine's tests on the host — see
+# scripts/setup-engine.mjs. Never installed into the machine's Python.
 .venv/
+
+# macOS
+.DS_Store
