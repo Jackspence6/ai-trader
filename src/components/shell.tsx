@@ -51,9 +51,12 @@ type LadderResponse = {
 
 type FundNature = "simulated" | "real" | "mixed" | "none";
 
+type ExecutionState = { mode: "paper" | "testnet" | "live"; reason: string };
+
 type ShellData = {
   halt: LiveState<{ state: { halted: boolean } }>;
   fund: LiveState<{ nav: { nature: FundNature } }>;
+  execution: LiveState<ExecutionState>;
   config: LiveState<{ config: EngineConfig }>;
   markets: LiveState<MarketSnapshot>;
   positions: LiveState<{ open: number; isLive: boolean }>;
@@ -86,10 +89,11 @@ function useShellData(): ShellData {
  * reconciliation problem before it is anything else.
  */
 function TradeMode() {
-  const { fund } = useShellData();
+  const { fund, execution } = useShellData();
   const nature = fund.data?.nav.nature ?? null;
+  const mode = execution.data?.mode ?? null;
 
-  if (nature === null) {
+  if (nature === null && mode === null) {
     return (
       <span className="micro flex h-7 items-center gap-1.5 border border-line-bright px-2 text-dim">
         <span className="block size-1.5 rounded-full bg-dim" />
@@ -98,42 +102,54 @@ function TradeMode() {
     );
   }
 
-  const live = nature === "real" || nature === "mixed";
-  const label =
-    nature === "real" ? "LIVE CAPITAL" : nature === "mixed" ? "MIXED CAPITAL" : "PAPER";
+  // Either signal alone is enough to make this loud. A ledger holding real
+  // capital matters even if the engine is on paper, and an engine pointed at a
+  // real exchange matters even before the first deposit.
+  const capitalLive = nature === "real" || nature === "mixed";
+  const engineLive = mode === "live";
+  const loud = capitalLive || engineLive;
+
+  const label = engineLive
+    ? "LIVE"
+    : mode === "testnet"
+      ? "TESTNET"
+      : capitalLive
+        ? nature === "mixed"
+          ? "MIXED CAPITAL"
+          : "REAL CAPITAL · PAPER ENGINE"
+        : "PAPER";
+
+  const tone = engineLive || nature === "real"
+    ? "border-down bg-down/15 text-down"
+    : loud || mode === "testnet"
+      ? "border-warn bg-warn/15 text-warn"
+      : "border-line-bright text-muted";
 
   return (
     <>
-      {live && (
+      {loud && (
         <span
           aria-hidden
           className={cx(
             "pointer-events-none fixed inset-x-0 top-0 z-50 h-[2px]",
-            nature === "mixed" ? "bg-warn" : "bg-down",
+            engineLive || nature === "real" ? "bg-down" : "bg-warn",
           )}
         />
       )}
       <span
-        title={
-          live
-            ? "Real capital is deposited against this book. Orders move money."
-            : "Simulated capital only. Fills are against a pessimistic paper venue; no money is at a broker."
-        }
-        className={cx(
-          "micro flex h-7 items-center gap-1.5 border px-2",
-          nature === "real"
-            ? "border-down bg-down/15 text-down"
-            : nature === "mixed"
-              ? "border-warn bg-warn/15 text-warn"
-              : "border-line-bright text-muted",
-        )}
+        title={execution.data?.reason ?? "Resolving execution mode"}
+        className={cx("micro flex h-7 items-center gap-1.5 border px-2", tone)}
       >
         <span
           className={cx(
             "block size-1.5 rounded-full",
-            nature === "real" ? "bg-down" : nature === "mixed" ? "bg-warn" : "bg-dim",
+            engineLive || nature === "real"
+              ? "bg-down"
+              : loud || mode === "testnet"
+                ? "bg-warn"
+                : "bg-dim",
           )}
-          style={live ? { animation: "breathe 2s var(--ease-out) infinite" } : undefined}
+          style={loud ? { animation: "breathe 2s var(--ease-out) infinite" } : undefined}
         />
         {label}
       </span>
@@ -757,10 +773,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const positions = useLive<{ open: number; isLive: boolean }>("/api/positions", 30_000);
   const ladder = useLive<LadderResponse>("/api/ladder", 60_000);
   const fund = useLive<{ nav: { nature: FundNature } }>("/api/fund", 30_000);
+  const execution = useLive<ExecutionState>("/api/execution", 60_000);
 
   const data = useMemo<ShellData>(
-    () => ({ halt, config, markets, positions, ladder, fund }),
-    [halt, config, markets, positions, ladder, fund],
+    () => ({ halt, config, markets, positions, ladder, fund, execution }),
+    [halt, config, markets, positions, ladder, fund, execution],
   );
 
   // Restore the operator's rail preference after mount — reading localStorage

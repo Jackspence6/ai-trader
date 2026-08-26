@@ -55,6 +55,8 @@ import { charterViolations } from "@/lib/portfolio/portfolios";
 import { writeConfig } from "./store";
 import { halt as haltTrading } from "@/lib/killswitch/state";
 import { SimulatedVenue, booksFromQuotes } from "@/lib/oms/simulated";
+import type { Venue } from "@/lib/oms/types";
+import { resolveVenue } from "@/lib/oms/venues/resolve";
 import { newIntentId, type Order } from "@/lib/oms/types";
 import { edgeAccuracy, runPaperPass } from "@/lib/oms/paper";
 import {
@@ -130,7 +132,11 @@ async function accrueCarry(
  * naked half-position.
  */
 async function processExits(
-  venue: SimulatedVenue,
+  // The interface, not the simulated implementation. Only `submit` is used, and
+  // typing this to SimulatedVenue meant a live venue could not flow through the
+  // pipeline even once one was resolved — the live path would have failed to
+  // compile at the point someone most wanted it to work.
+  venue: Venue,
   fills: Fill[],
   funding: Awaited<ReturnType<typeof readFundingPayments>>,
   prices: Map<string, number>,
@@ -470,8 +476,17 @@ export async function runTradingPass(): Promise<PassOutcome> {
     ...scanCryptoTrend({ config, candles, tier, dataAgeSeconds, halted: false }),
   ];
 
-  const venue = new SimulatedVenue();
-  venue.setBooks([...booksFromQuotes(snapshot.quotes), ...fxBooks(fxQuotes)]);
+  // One seam decides which money is at risk — see oms/venues/resolve. The loop
+  // does not choose; it is told, and it logs why on every pass so the answer to
+  // "why is this on paper?" is in the record rather than in someone's memory.
+  const execution = resolveVenue();
+  const venue = execution.venue;
+  // Only the simulated venue needs books handed to it; a real exchange has its
+  // own. Narrowed by instance rather than cast, so adding a second live adapter
+  // cannot silently skip this and cannot silently receive it either.
+  if (venue instanceof SimulatedVenue) {
+    venue.setBooks([...booksFromQuotes(snapshot.quotes), ...fxBooks(fxQuotes)]);
+  }
 
   // Close first, open second. A trade whose thesis has broken — funding
   // inverted, FX carry decayed, or a stop breached — is closed before new

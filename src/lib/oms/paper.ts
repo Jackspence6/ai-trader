@@ -42,7 +42,7 @@ import {
 } from "@/lib/portfolio/positions";
 import type { ScoredOpportunity } from "@/lib/engine/scanner";
 import type { EngineConfig } from "@/lib/engine/config";
-import type { SimulatedVenue } from "./simulated";
+import type { Venue } from "./types";
 import { newIntentId, type Order, type OrderIntent } from "./types";
 
 export type PaperDecision = {
@@ -150,7 +150,9 @@ function predictedEntryCost(opp: ScoredOpportunity): number {
 export type PaperContext = {
   config: EngineConfig;
   opportunities: ScoredOpportunity[];
-  venue: SimulatedVenue;
+  /** The interface, so the same pass runs against a live venue unchanged —
+   *  which is the whole claim paper mode makes. */
+  venue: Venue;
   prices: Map<string, number>;
   halted: boolean;
   dataAgeSeconds: number;
