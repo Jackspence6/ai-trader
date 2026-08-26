@@ -51,6 +51,16 @@ manual-placement charter — incompatible, not hard); narrow fast
 prediction-market gaps (a bot fight; we would be the retail entrant funding the
 winners, the same argument that rejected MEV).
 
+**Shipped in the deployment-readiness pass (2026-08-26).** One execution seam
+deciding which money is at risk; one kill switch reaching both desks; one pool
+and one database name; the stake-plan rounding bug; preflight, `.env.example`
+and a bootstrap that survives a cold box; self-hosted typography, so no build
+depends on the network; a test suite that runs on the deployment machine rather
+than only on the machine it was written on; pinned Python dependencies; a
+repaired lockfile; and `docs/` with an index. Full detail in
+[`docs/changelog.md`](docs/changelog.md). The verdicts above are unchanged by
+any of it.
+
 ---
 
 ## 1. Next up — ranked (the agent's recommendation, updated 2026-07-26)

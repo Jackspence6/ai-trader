@@ -19,7 +19,7 @@ nothing below assumes the step after it.
 - [ ] Set `SITE_PASSWORD` in `.env.local`
 - [ ] `pnpm preflight` — **no FAIL lines.** WARNs are capabilities you are
       choosing to go without; read each one and decide deliberately
-- [ ] `pnpm test:all` — 474 vitest, 73 event checks, 137 pytest. If the pytest
+- [ ] `pnpm test:all` — 478 vitest, 73 event checks, 137 pytest. If the pytest
       third fails to start, `pnpm setup:engine` installs the engine's packages
       into a venv beside it (bootstrap already tried; this reports why it could
       not). A skipped third is not a passing suite

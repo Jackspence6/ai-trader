@@ -3,6 +3,47 @@
 What changed between the merge landing and the first machine it will run on,
 and why. Grouped by what it protects rather than by file.
 
+## Bugs that would have shown up on the deployment machine
+
+**The console had been rendering in the wrong typeface since the first commit
+of this pass.** `next/font/google` fetches font files at build time, this box
+has no route to `fonts.gstatic.com`, and the workaround was a swap script:
+copy `fonts.ts` aside, write a system-font module over it, build, copy back.
+The copy-back is the last step, so a build that does not reach its last step
+leaves the repository in the offline state — and then `git add -A` committed
+both the swapped file and the backup holding the real one. Nothing failed and
+nothing looked broken; a console in Helvetica still looks like a console. Inter
+and JetBrains Mono are now vendored (88KB, latin subset, variable axis, SIL OFL
+included) and loaded through `next/font/local`. No font path touches the
+network, there is no swap and no state, and two builds of one commit cannot
+differ.
+
+**`pnpm test:all` was a statement about the build container, not the
+deployment box.** The engine third invoked bare `python`, which macOS has not
+shipped since Monterey; the engine's packages were never installed on the host,
+because the engine runs in Docker; and pytest run from the wrong directory
+misses the `pyproject.toml` holding `asyncio_mode`, silently dropping four
+async tests from 137 to 133. `scripts/py.mjs` resolves all three explicitly and
+names which one it hit when it cannot. It never reports success without
+running.
+
+**The Python tree was unpinned.** `pyproject.toml` states floors; the Node side
+has a lockfile and the Python side had nothing, so the deployment box could
+resolve a tree the 137 engine tests had never run against.
+`constraints.txt` pins the tested set and is used by both the host venv and the
+engine image.
+
+**The lockfile was broken.** `pnpm install --frozen-lockfile` — the first thing
+bootstrap runs, and the first thing that happens on a fresh clone — refused it:
+an entry named but not resolved. A lockfile that is subtly wrong installs fine
+under a plain `pnpm install` and only fails under `--frozen-lockfile`, so this
+would have surfaced on the deployment morning rather than here.
+
+**One gitignore instead of two.** The merge kept the arbitrage repo's and
+dropped the trader's. Each covered something the other did not, and the gap
+mattered on a Mac: no `.DS_Store` rule, and no `*.pem` rule to stop a stray key
+being one `git add .` away from a commit.
+
 ## Bugs that could have cost money
 
 **The stake plan rounded stakes the wrong way.** `naturalizeStakes` — which
@@ -89,9 +130,22 @@ flush against the rail.
 **`/gallery`** renders every primitive in every state. Not in the navigation —
 it is a workbench for the states that cannot be reached on demand.
 
+**The elevation tokens were defined and never used.** `--lift-1`, `--lift-2`,
+`--glow-accent`, `--glow-up` and `--glow-down` had shipped with a comment
+explaining that a dark instrument is lit from inside rather than by shadow, and
+nothing referenced any of them — which is why the interface read as correct and
+inert at once. A `surface` utility now gives every panel a lit top edge and a
+gradient that is lighter at the top than the bottom; the body carries an
+ambient wash from two directions; three `bloom-*` utilities put a directional
+glow behind large figures, gated on the figure being non-zero, because a
+glowing zero claims something is happening when nothing is. The wash sits on
+`body::before`, not `::after`: both are children of `body`, so `::after` paints
+over every panel and glyph on the screen. Nothing added sits over text, so no
+measured contrast changed.
+
 ## Tests
 
-474 vitest (up from 451), 73 event-desk checks, 137 pytest. New: eleven property
+478 vitest (up from 451), 73 event-desk checks, 137 pytest. New: eleven property
 tests for the arbitrage identities, seven for the execution seam, three for the
 kill switch spanning both desks, two for the fee model generalising across
 venues.

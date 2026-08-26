@@ -43,8 +43,8 @@ docker compose --profile events up -d # Event Markets engine
 ## Verify it
 
 ```sh
-pnpm test:all      # 474 vitest · 73 event-desk checks · 137 pytest
-pnpm preflight     # 18 live checks against the real world
+pnpm test:all      # 478 vitest · 73 event-desk checks · 137 pytest
+pnpm preflight     # tries every venue, feed and dependency for real
 ```
 
 `test:all` includes the Event Markets engine's Python suite, which needs the
