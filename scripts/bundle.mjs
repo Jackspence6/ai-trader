@@ -18,16 +18,31 @@
 // install on a machine that can take one.
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(repo, "dist-bundle");
-const next = path.join(repo, ".next");
+// Bundle builds go to their own distDir so `.next` is never left in the
+// standalone shape — see the comment in next.config.ts.
+const next = path.join(repo, ".next-bundle");
+
+// Build with MERIDIAN_BUNDLE=1, which is what turns on standalone output. Set
+// here rather than in the package script because `VAR=1 cmd` is not portable to
+// Windows, and this script has to be runnable wherever the repo is.
+console.log("building with standalone output...");
+const build = spawnSync("npx", ["next", "build"], {
+  cwd: repo,
+  stdio: "inherit",
+  env: { ...process.env, MERIDIAN_BUNDLE: "1", NODE_OPTIONS: "--max-old-space-size=2048" },
+  shell: process.platform === "win32",
+});
+if (build.status !== 0) process.exit(build.status ?? 1);
 
 if (!existsSync(path.join(next, "standalone"))) {
-  console.error("\n  No standalone output found. Run `pnpm build` first.");
-  console.error("  (next.config.ts must have output: \"standalone\" — it does by default.)\n");
+  console.error("\n  The build produced no standalone output.");
+  console.error("  next.config.ts turns it on when MERIDIAN_BUNDLE=1 — check that it still does.\n");
   process.exit(1);
 }
 
@@ -36,8 +51,15 @@ mkdirSync(out, { recursive: true });
 
 // The traced server and its minimal node_modules.
 cpSync(path.join(next, "standalone"), out, { recursive: true });
-// Static assets are not traced — Next expects them copied alongside.
-cpSync(path.join(next, "static"), path.join(out, ".next", "static"), { recursive: true });
+// Static assets are not traced — Next expects them copied alongside, and
+// "alongside" means inside the *distDir*, not inside a directory called
+// `.next`. With a custom distDir those are different places, and putting them
+// in the wrong one produces a bundle that starts cleanly, serves HTML, and
+// 404s every stylesheet, script and font: a console with no styling and no
+// interactivity, which looks like a broken build rather than a misplaced
+// folder. Derive the name from the path rather than writing it twice.
+const distName = path.basename(next);
+cpSync(path.join(next, "static"), path.join(out, distName, "static"), { recursive: true });
 // The template, so the first thing you do on the box is copy and edit a file
 // that documents itself.
 cpSync(path.join(repo, ".env.example"), path.join(out, ".env.example"));

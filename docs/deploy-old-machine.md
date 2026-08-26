@@ -178,6 +178,8 @@ What you should see, and why it is correct:
 | Panels saying **NOTHING IS SCANNING** | No engine is running yet. Step 9. |
 | NAV, ladder and history blank | No database yet. Step 8. |
 | **NO CAPITAL** in the banner | True. Nothing is funded. |
+| **GLOBAL HALT**, and the desk marked HALTED | Correct, and not a fault. The halt state lives in the database; with no database the system cannot confirm it is *not* halted, so it reports halted. Failing the other way would show a green light it had no basis for. It clears itself once step 8 is done. |
+| **0 VENUES · 4 DOWN** | The box cannot reach the exchanges. If that is unexpected, it is the connection. |
 
 Empty is four different states in this interface and they are drawn
 differently on purpose — an idle market and a dead instrument demand opposite
@@ -265,6 +267,7 @@ user is logged on or not", one per process.
 | Header reads anything but PAPER | Stop. `MERIDIAN_EXECUTION` has been set. Unset it. |
 | Board says NOTHING IS SCANNING | No engine and no database. Correct, until steps 8 and 9. |
 | Board says NO ARBITRAGE OPEN | The engine is running and the market is efficient. This is a result. |
+| GLOBAL HALT on a fresh install | Expected with no database — it cannot verify it is not halted, so it says halted. Step 8 clears it. |
 | Venue checks fail in preflight | The box cannot reach the markets — usually the connection, not the machine. |
 
 [Operations](./operations.md) covers running it day to day;
