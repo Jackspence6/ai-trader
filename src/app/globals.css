@@ -76,9 +76,10 @@
     0 0 24px -6px color-mix(in oklab, var(--color-accent) 45%, transparent);
   --glow-up: 0 0 20px -6px color-mix(in oklab, var(--color-up) 55%, transparent);
   --glow-down: 0 0 20px -6px color-mix(in oklab, var(--color-down) 55%, transparent);
-  --lift-1: inset 0 1px 0 0 color-mix(in oklab, white 4%, transparent);
-  --lift-2: inset 0 1px 0 0 color-mix(in oklab, white 7%, transparent),
-    0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --lift-1: inset 0 1px 0 0 color-mix(in oklab, white 9%, transparent),
+    0 1px 0 0 rgb(0 0 0 / 0.5);
+  --lift-2: inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent),
+    0 2px 8px -2px rgb(0 0 0 / 0.6);
 }
 
 @layer base {
@@ -99,7 +100,18 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* faint drafting-paper grid */
+  /* Ambient light and the drafting grid, in one layer, deliberately on
+     ::before rather than ::after.
+
+     Painting order matters here and cost me a wrong first attempt: both
+     pseudo-elements are children of body, so ::before paints beneath body's
+     real children and ::after paints on top of them. An ambient wash on
+     ::after tints every panel and every glyph on the screen — it looks like
+     atmosphere at 2% and like a dirty screen at 12%. Underneath, it does what
+     it is for: the panels sit in something rather than on nothing.
+
+     Two sources, top-centre and bottom-right, so the screen has a direction of
+     light. Nothing here sits over text, so no measured contrast changes. */
   body::before {
     content: "";
     position: fixed;
@@ -107,9 +119,23 @@
     pointer-events: none;
     z-index: 0;
     background-image:
-      linear-gradient(to right, rgba(255, 255, 255, 0.016) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
-    background-size: 32px 32px;
+      radial-gradient(
+        110% 70% at 50% -12%,
+        color-mix(in oklab, var(--color-accent) 16%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        80% 55% at 102% 104%,
+        color-mix(in oklab, var(--color-fx) 11%, transparent),
+        transparent 60%
+      ),
+      linear-gradient(to right, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size:
+      100% 100%,
+      100% 100%,
+      32px 32px,
+      32px 32px;
   }
 
   ::-webkit-scrollbar {
@@ -392,6 +418,42 @@
   }
 }
 
+/* ---------------------------------------------------------------- surfaces
+   The elevation tokens existed for several commits and nothing used them, so
+   every panel rendered as a flat rectangle with a hairline. A dark instrument
+   cannot be lit by shadow — a drop shadow on near-black is mud — so it is lit
+   from inside: a one-pixel highlight catching light along the top edge, and a
+   gradient that is fractionally lighter at the top than the bottom. The effect
+   is small per panel and decisive across a screenful. */
+@utility surface {
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, white 5.5%, transparent),
+    color-mix(in oklab, white 1%, transparent) 30%,
+    transparent 55%
+  );
+  box-shadow: var(--lift-1);
+}
+
+/* A panel carrying live values, or the one thing on a screen that matters
+   most. The accent ring is at 22% and the bloom is offset negative, so it
+   reads as a glow rather than an outline. */
+@utility surface-live {
+  box-shadow: var(--lift-1), var(--glow-accent);
+}
+
+/* Directional bloom behind a large number. Only for figures set large enough
+   to carry it — on 12px table text it turns into a smudge. */
+@utility bloom-up {
+  text-shadow: 0 0 18px color-mix(in oklab, var(--color-up) 40%, transparent);
+}
+@utility bloom-down {
+  text-shadow: 0 0 18px color-mix(in oklab, var(--color-down) 40%, transparent);
+}
+@utility bloom-accent {
+  text-shadow: 0 0 20px color-mix(in oklab, var(--color-accent) 38%, transparent);
+}
+
 @utility flash-value {
   animation: value-flash 900ms var(--ease-out);
 }
@@ -412,6 +474,7 @@
 
   &:hover:not(:disabled) {
     border-color: var(--color-line-bright);
+    box-shadow: var(--lift-2);
   }
   &:disabled {
     opacity: 0.4;

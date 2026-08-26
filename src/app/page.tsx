@@ -167,7 +167,15 @@ export default function CommandCenter() {
         >
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
             <div>
-              <span className="text-[38px] leading-none tracking-tight text-ink">
+              <span
+                className={cx(
+                  "text-[38px] leading-none tracking-tight text-ink",
+                  // The bloom is the screen's focal point, so it is spent on
+                  // the one figure that means something. At zero NAV there is
+                  // nothing to draw attention to and the glow would be a lie.
+                  nav > 0 && "bloom-accent",
+                )}
+              >
                 <Money usd={nav} />
               </span>
               <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
@@ -423,10 +431,12 @@ function MiniStat({
   tone?: "ink" | "up" | "muted" | "fx";
 }) {
   const c = tone === "up" ? "text-up" : tone === "muted" ? "text-muted" : tone === "fx" ? "text-fx" : "text-ink";
+  // A count of zero is not a result worth lighting up; a non-zero one is.
+  const lit = value > 0 && (tone === "up" || tone === "fx");
   return (
     <Panel>
       <Stat label={label} sub={<span className="text-dim">{sub}</span>}>
-        <span className={cx("tnum text-[22px]", c)}>{value}</span>
+        <span className={cx("tnum text-[22px]", c, lit && "bloom-up")}>{value}</span>
       </Stat>
     </Panel>
   );

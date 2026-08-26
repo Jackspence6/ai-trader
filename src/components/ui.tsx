@@ -25,7 +25,7 @@ export function Panel({
   return (
     <section
       className={cx(
-        "ticked relative border border-line bg-panel/70 backdrop-blur-[1px]",
+        "ticked surface relative border border-line bg-panel/70 backdrop-blur-[1px]",
         className,
       )}
     >
@@ -34,7 +34,7 @@ export function Panel({
           cannot share a line — letting them collide was the one place the
           layout broke on a phone. */}
       {label && (
-        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-3 py-2">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line bg-panel-2/40 px-3 py-2">
           <div className="flex min-w-0 items-baseline gap-2">
             <h2 className="micro whitespace-nowrap text-muted">{label}</h2>
             {hint && <span className="micro truncate text-dim">{hint}</span>}
